@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { WorkflowList } from './components/WorkflowList';
 import { GraphViewer } from './components/GraphViewer';
 import { useEventStream } from './hooks/useEventStream';
-import { Play } from 'lucide-react';
+import { Play, Trash2 } from 'lucide-react';
 
 type Workflow = {
     id: string;
@@ -16,7 +16,7 @@ export default function App() {
     const [graph, setGraph] = useState<any>(null);
     const [currentRunId, setCurrentRunId] = useState<string | null>(null);
 
-    const { nodeStates, events } = useEventStream(currentRunId);
+    const { nodeStates, events, clearEvents } = useEventStream(currentRunId);
 
     const fetchWorkflows = () => {
         fetch('/api/workflows')
@@ -111,25 +111,40 @@ export default function App() {
                 </div>
 
                 {/* Detailed Logs Panel */}
-                <div className="h-48 border-t border-gray-800 bg-gray-900 overflow-auto p-2 text-xs font-mono text-gray-400">
-                    {events.map((e, i) => (
-                        <div key={i} className="whitespace-pre-wrap py-0.5 border-b border-gray-800/50">
-                            <span className="text-gray-500">[{new Date().toLocaleTimeString()}]</span>{" "}
-                            {e.type === 'node:log' ? (
-                                <span className={e.level === 'error' ? 'text-red-400' : 'text-gray-300'}>
-                                    {e.nodeTitle ? `${e.nodeTitle}: ` : ''}{e.msg} {e.data ? JSON.stringify(e.data) : ''}
-                                </span>
-                            ) : (
-                                <span className="text-blue-400">
-                                    {e.type}
-                                    <span className="text-white mx-1">
-                                        {e.nodeTitle ? e.nodeTitle : e.nodeId}
+                <div className="h-48 border-t border-gray-800 bg-gray-900 flex flex-col">
+                    <div className="h-8 border-b border-gray-800 flex items-center justify-between px-3 bg-gray-900/50">
+                        <span className="text-xs font-semibold text-gray-400">Logs</span>
+                        {events.length > 0 && (
+                            <button
+                                onClick={clearEvents}
+                                className="text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1.5 text-xs"
+                                title="Clear logs"
+                            >
+                                <Trash2 size={14} />
+                                Clear
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex-1 overflow-auto p-2 text-xs font-mono text-gray-400">
+                        {events.map((e, i) => (
+                            <div key={i} className="whitespace-pre-wrap py-0.5 border-b border-gray-800/50">
+                                <span className="text-gray-500">[{new Date().toLocaleTimeString()}]</span>{" "}
+                                {e.type === 'node:log' ? (
+                                    <span className={e.level === 'error' ? 'text-red-400' : 'text-gray-300'}>
+                                        {e.nodeTitle ? `${e.nodeTitle}: ` : ''}{e.msg} {e.data ? JSON.stringify(e.data) : ''}
                                     </span>
-                                    {e.nodeTitle && e.nodeId && <span className="text-gray-500">({e.nodeId})</span>}
-                                </span>
-                            )}
-                        </div>
-                    ))}
+                                ) : (
+                                    <span className="text-blue-400">
+                                        {e.type}
+                                        <span className="text-white mx-1">
+                                            {e.nodeTitle ? e.nodeTitle : e.nodeId}
+                                        </span>
+                                        {e.nodeTitle && e.nodeId && <span className="text-gray-500">({e.nodeId})</span>}
+                                    </span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>

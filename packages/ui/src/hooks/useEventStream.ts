@@ -49,5 +49,9 @@ export function useEventStream(runId: string | null) {
         };
     }, [runId]);
 
-    return { events, nodeStates };
+    const clearEvents = () => {
+        setEvents([]);
+    };
+
+    return { events, nodeStates, clearEvents };
 }
