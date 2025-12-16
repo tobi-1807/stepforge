@@ -14,6 +14,11 @@ export type StepContext = {
     output(value: unknown): void;
     isCancelled(): boolean;
     throwIfCancelled(): void;
+    run: {
+        get<T>(key: string): T | undefined;
+        set<T>(key: string, value: T): void;
+        require<T>(key: string): T;
+    };
 };
 
 export type WorkflowBuilder = {

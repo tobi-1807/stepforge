@@ -111,6 +111,7 @@ export async function executeWorkflow(
 
     // Execution Context State
     let isCancelled = false;
+    const runState = new Map<string, unknown>();
 
     const traverseAndExecute = async (
         buildFn: (b: WorkflowBuilder) => void,
@@ -160,7 +161,15 @@ export async function executeWorkflow(
                     artifact: (a) => onEvent({ type: 'node:artifact', nodeId, nodeTitle, data: a }),
                     output: (o) => onEvent({ type: 'node:output', nodeId, nodeTitle, data: o }),
                     isCancelled: () => isCancelled,
-                    throwIfCancelled: () => { if (isCancelled) throw new Error("Cancelled"); }
+                    throwIfCancelled: () => { if (isCancelled) throw new Error("Cancelled"); },
+                    run: {
+                        get: (key) => runState.get(key) as any,
+                        set: (key, value) => { runState.set(key, value); },
+                        require: (key) => {
+                            if (!runState.has(key)) throw new Error(`Missing required run key: ${key}`);
+                            return runState.get(key) as any;
+                        }
+                    }
                 };
 
                 try {
