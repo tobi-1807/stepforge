@@ -49,13 +49,26 @@ app.get('/api/workflows/:id/graph', (req, res) => {
     res.json(wf.graph);
 });
 
+app.get('/api/workflows/:id/details', (req, res) => {
+    const wf = getWorkflow(req.params.id);
+    if (!wf) return res.status(404).json({ error: "Not found" });
+
+    res.json({
+        id: wf.id,
+        name: wf.definition.name,
+        version: wf.version,
+        inputs: wf.definition.inputs || [],
+        graph: wf.graph
+    });
+});
+
 app.post('/api/runs', (req, res) => {
-    const { workflowId } = req.body;
+    const { workflowId, inputs } = req.body;
     const wf = getWorkflow(workflowId);
     if (!wf) return res.status(404).json({ error: "Not found" });
 
     const runId = `run_${Date.now()}`;
-    startRun(wf, runId, wss);
+    startRun(wf, runId, wss, inputs);
 
     res.json({ runId });
 });

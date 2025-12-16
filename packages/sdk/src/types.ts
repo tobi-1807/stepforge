@@ -28,8 +28,18 @@ export type WorkflowBuilder = {
     _getInternalState?(): any;
 };
 
+export type InputParameter = {
+    name: string;
+    type: 'string' | 'number' | 'boolean';
+    label: string;
+    description?: string;
+    required?: boolean;
+    default?: string | number | boolean;
+};
+
 export type WorkflowDefinition = {
     name: string;
+    inputs?: InputParameter[];
     build: (wf: WorkflowBuilder) => void;
 };
 

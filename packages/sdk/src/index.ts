@@ -104,14 +104,20 @@ export async function executeWorkflow(
     version: string,
     context: {
         runId: string,
-        onEvent: (evt: any) => void
+        onEvent: (evt: any) => void,
+        inputs?: Record<string, any>
     }
 ) {
-    const { runId, onEvent } = context;
+    const { runId, onEvent, inputs = {} } = context;
 
     // Execution Context State
     let isCancelled = false;
     const runState = new Map<string, unknown>();
+
+    // Initialize runState with inputs
+    Object.entries(inputs).forEach(([key, value]) => {
+        runState.set(key, value);
+    });
 
     const traverseAndExecute = async (
         buildFn: (b: WorkflowBuilder) => void,

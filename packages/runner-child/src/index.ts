@@ -4,11 +4,12 @@ import { WorkflowDefinition } from '@stepforge/sdk';
 async function main() {
     const args = process.argv.slice(2);
     if (args.length < 5) {
-        console.error("Usage: runner <workspaceRoot> <workflowFile> <workflowId> <runId> <version>");
+        console.error("Usage: runner <workspaceRoot> <workflowFile> <workflowId> <runId> <version> [inputs]");
         process.exit(1);
     }
 
-    const [workspaceRoot, workflowFile, workflowId, runId, version] = args;
+    const [workspaceRoot, workflowFile, workflowId, runId, version, inputsJson = '{}'] = args;
+    const inputs = JSON.parse(inputsJson);
 
     // Emit helper
     const emit = (event: any) => {
@@ -34,7 +35,8 @@ async function main() {
 
         await executeWorkflow(def, version, {
             runId,
-            onEvent: emit
+            onEvent: emit,
+            inputs
         });
 
     } catch (e: any) {

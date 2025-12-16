@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { WorkflowList } from './components/WorkflowList';
 import { GraphViewer } from './components/GraphViewer';
+import { RunConfigModal } from './components/RunConfigModal';
+import { NodeDetailsPanel } from './components/NodeDetailsPanel';
 import { useEventStream } from './hooks/useEventStream';
 import { Play, Trash2 } from 'lucide-react';
 
@@ -15,6 +17,8 @@ export default function App() {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [graph, setGraph] = useState<any>(null);
     const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+    const [showConfigModal, setShowConfigModal] = useState(false);
+    const [selectedNode, setSelectedNode] = useState<any>(null);
 
     const { nodeStates, events, clearEvents } = useEventStream(currentRunId);
 
@@ -61,19 +65,32 @@ export default function App() {
             .catch(console.error);
     }, [selectedId]);
 
-    const handleRun = async () => {
+    const handleRunClick = () => {
+        setShowConfigModal(true);
+    };
+
+    const handleRunSubmit = async (inputs: Record<string, any>) => {
         if (!selectedId) return;
         try {
             const res = await fetch('/api/runs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ workflowId: selectedId })
+                body: JSON.stringify({ workflowId: selectedId, inputs })
             });
             const data = await res.json();
             setCurrentRunId(data.runId);
+            setShowConfigModal(false);
             console.log("Started run:", data.runId);
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    const handleNodeClick = (nodeId: string) => {
+        if (!graph) return;
+        const node = graph.nodes[nodeId];
+        if (node) {
+            setSelectedNode(node);
         }
     };
 
@@ -91,7 +108,7 @@ export default function App() {
                     </div>
                     {selectedId && (
                         <button
-                            onClick={handleRun}
+                            onClick={handleRunClick}
                             className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded flex items-center gap-2 text-sm font-medium transition-colors"
                         >
                             <Play size={16} fill="currentColor" />
@@ -102,7 +119,17 @@ export default function App() {
 
                 <div className="flex-1 relative">
                     {graph ? (
-                        <GraphViewer graph={graph} nodeStates={nodeStates} />
+                        <>
+                            <GraphViewer
+                                graph={graph}
+                                nodeStates={nodeStates}
+                                onNodeClick={handleNodeClick}
+                            />
+                            <NodeDetailsPanel
+                                node={selectedNode}
+                                onClose={() => setSelectedNode(null)}
+                            />
+                        </>
                     ) : (
                         <div className="flex items-center justify-center h-full text-gray-600">
                             No workflow selected or graph loaded
@@ -147,6 +174,16 @@ export default function App() {
                     </div>
                 </div>
             </div>
+
+            {/* Config Modal */}
+            {showConfigModal && selectedId && (
+                <RunConfigModal
+                    workflowId={selectedId}
+                    workflowName={workflows.find(w => w.id === selectedId)?.name || ''}
+                    onClose={() => setShowConfigModal(false)}
+                    onSubmit={handleRunSubmit}
+                />
+            )}
         </div>
     );
 }

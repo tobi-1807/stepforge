@@ -6,7 +6,7 @@ import { WebSocketServer } from 'ws';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export function startRun(wf: any, runId: string, wss: WebSocketServer) {
+export function startRun(wf: any, runId: string, wss: WebSocketServer, inputs?: Record<string, any>) {
     // Robust path resolution for monorepo
     const projectRoot = path.resolve(__dirname, '../../../');
     const childPath = path.resolve(projectRoot, 'packages/runner-child/src/index.ts');
@@ -26,7 +26,8 @@ export function startRun(wf: any, runId: string, wss: WebSocketServer) {
 
     // Spawn runner
     // We use 'tsx' to run the child process source directly
-    const child = spawn('npx', ['tsx', childPath, process.cwd(), wf.filePath, wf.id, runId, wf.version], {
+    const inputsJson = inputs ? JSON.stringify(inputs) : '{}';
+    const child = spawn('npx', ['tsx', childPath, process.cwd(), wf.filePath, wf.id, runId, wf.version, inputsJson], {
         env: { ...process.env, STEPFORGE_MODE: 'run', FORCE_COLOR: '1' },
         stdio: ['ignore', 'pipe', 'pipe']
     });

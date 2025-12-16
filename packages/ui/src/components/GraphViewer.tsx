@@ -15,9 +15,10 @@ type GraphNode = {
 type Props = {
     graph: any;
     nodeStates: Record<string, string>;
+    onNodeClick?: (nodeId: string) => void;
 };
 
-export function GraphViewer({ graph, nodeStates }: Props) {
+export function GraphViewer({ graph, nodeStates, onNodeClick }: Props) {
     const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
 
@@ -148,6 +149,7 @@ export function GraphViewer({ graph, nodeStates }: Props) {
                 edges={edges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
+                onNodeClick={(_, node) => onNodeClick?.(node.id)}
                 nodeTypes={nodeTypes}
                 fitView
             >
