@@ -105,19 +105,68 @@ export async function executeWorkflow(
     context: {
         runId: string,
         onEvent: (evt: any) => void,
-        inputs?: Record<string, any>
+        inputs?: Record<string, any>,
+        onControlStateChange?: (state: import('./types.js').RunControlState) => void,
+        getControlSignal?: () => import('./types.js').RunControlSignal | null
     }
 ) {
-    const { runId, onEvent, inputs = {} } = context;
+    const { runId, onEvent, inputs = {}, onControlStateChange, getControlSignal } = context;
 
     // Execution Context State
     let isCancelled = false;
+    let isPaused = false;
     const runState = new Map<string, unknown>();
+    const failedSteps: Array<{ nodeId: string; error: string }> = [];
 
     // Initialize runState with inputs
     Object.entries(inputs).forEach(([key, value]) => {
         runState.set(key, value);
     });
+
+    // Helper to emit control state
+    const emitControlState = (pausedAt?: string) => {
+        const state: import('./types.js').RunControlState = {
+            signal: getControlSignal?.() || null,
+            pausedAt,
+            failedSteps
+        };
+        onControlStateChange?.(state);
+        onEvent({ type: 'run:control_state', runId, state });
+    };
+
+    // Helper to wait while paused
+    const waitIfPausedHelper = async (nodeId: string) => {
+        const signal = getControlSignal?.();
+        if (signal === 'pause') {
+            if (!isPaused) {
+                isPaused = true;
+                onEvent({ type: 'run:paused', runId, nodeId, at: new Date().toISOString() });
+                emitControlState(nodeId);
+            }
+
+            // Wait until resume or cancel
+            while (true) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const currentSignal = getControlSignal?.();
+
+                if (currentSignal === 'resume') {
+                    isPaused = false;
+                    onEvent({ type: 'run:resumed', runId, at: new Date().toISOString() });
+                    emitControlState();
+                    break;
+                }
+
+                if (currentSignal === 'cancel') {
+                    isCancelled = true;
+                    break;
+                }
+            }
+        }
+
+        if (getControlSignal?.() === 'cancel') {
+            isCancelled = true;
+        }
+    };
 
     const traverseAndExecute = async (
         buildFn: (b: WorkflowBuilder) => void,
@@ -151,6 +200,10 @@ export async function executeWorkflow(
             const nodeId = generateNodeId(version, logicalPath);
             const nodeTitle = item.title;
 
+            // Check for pause/cancel before each step
+            await waitIfPausedHelper(nodeId);
+            if (isCancelled) break;
+
             if (item.type === 'step' && item.fn) {
                 onEvent({ type: 'node:start', nodeId, nodeTitle, at: new Date().toISOString() });
 
@@ -168,6 +221,8 @@ export async function executeWorkflow(
                     output: (o) => onEvent({ type: 'node:output', nodeId, nodeTitle, data: o }),
                     isCancelled: () => isCancelled,
                     throwIfCancelled: () => { if (isCancelled) throw new Error("Cancelled"); },
+                    isPaused: () => isPaused,
+                    waitIfPaused: async () => await waitIfPausedHelper(nodeId),
                     run: {
                         get: (key) => runState.get(key) as any,
                         set: (key, value) => { runState.set(key, value); },
@@ -181,8 +236,22 @@ export async function executeWorkflow(
                 try {
                     await item.fn(ctx);
                     onEvent({ type: 'node:end', nodeId, nodeTitle, status: 'success', at: new Date().toISOString() });
+                    // Remove from failed steps if it was there (retry success)
+                    const failedIndex = failedSteps.findIndex(f => f.nodeId === nodeId);
+                    if (failedIndex >= 0) {
+                        failedSteps.splice(failedIndex, 1);
+                        emitControlState();
+                    }
                 } catch (e: any) {
                     onEvent({ type: 'node:end', nodeId, nodeTitle, status: 'failure', error: e.message, at: new Date().toISOString() });
+                    // Track failed step
+                    const existingFailed = failedSteps.find(f => f.nodeId === nodeId);
+                    if (existingFailed) {
+                        existingFailed.error = e.message;
+                    } else {
+                        failedSteps.push({ nodeId, error: e.message });
+                    }
+                    emitControlState();
                     throw e;
                 }
 

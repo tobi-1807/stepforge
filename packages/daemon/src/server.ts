@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import chokidar from 'chokidar';
 import { discoverWorkflows, getWorkflow, reloadWorkflow, removeWorkflow } from './discovery.js';
 import { startRun } from './runner.js';
+import { runManager } from './run-manager.js';
 
 const app = express();
 app.use(express.json());
@@ -71,6 +72,56 @@ app.post('/api/runs', (req, res) => {
     startRun(wf, runId, wss, inputs);
 
     res.json({ runId });
+});
+
+// Control endpoints
+app.post('/api/runs/:runId/pause', (req, res) => {
+    const { runId } = req.params;
+    const success = runManager.pauseRun(runId);
+
+    if (success) {
+        res.json({ success: true, message: 'Run paused' });
+    } else {
+        res.status(404).json({ error: 'Run not found or already completed' });
+    }
+});
+
+app.post('/api/runs/:runId/resume', (req, res) => {
+    const { runId } = req.params;
+    const success = runManager.resumeRun(runId);
+
+    if (success) {
+        res.json({ success: true, message: 'Run resumed' });
+    } else {
+        res.status(404).json({ error: 'Run not found or already completed' });
+    }
+});
+
+app.post('/api/runs/:runId/cancel', (req, res) => {
+    const { runId } = req.params;
+    const success = runManager.cancelRun(runId);
+
+    if (success) {
+        res.json({ success: true, message: 'Run cancelled' });
+    } else {
+        res.status(404).json({ error: 'Run not found or already completed' });
+    }
+});
+
+app.get('/api/runs/:runId/state', (req, res) => {
+    const { runId } = req.params;
+    const state = runManager.getRunState(runId);
+
+    if (state) {
+        res.json(state);
+    } else {
+        res.status(404).json({ error: 'Run not found or already completed' });
+    }
+});
+
+app.get('/api/runs/active', (req, res) => {
+    const activeRuns = runManager.getAllActiveRuns();
+    res.json(activeRuns);
 });
 
 // Start Server

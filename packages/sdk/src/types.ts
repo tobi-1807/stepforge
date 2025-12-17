@@ -1,3 +1,11 @@
+export type RunControlSignal = 'pause' | 'resume' | 'cancel';
+
+export type RunControlState = {
+    signal: RunControlSignal | null;
+    pausedAt?: string; // nodeId where paused
+    failedSteps: Array<{ nodeId: string; error: string }>;
+};
+
 export type StepFn = (ctx: StepContext) => Promise<void>;
 
 export type StepContext = {
@@ -14,6 +22,8 @@ export type StepContext = {
     output(value: unknown): void;
     isCancelled(): boolean;
     throwIfCancelled(): void;
+    isPaused(): boolean;
+    waitIfPaused(): Promise<void>;
     run: {
         get<T>(key: string): T | undefined;
         set<T>(key: string, value: T): void;

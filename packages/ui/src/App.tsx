@@ -3,6 +3,7 @@ import { WorkflowList } from './components/WorkflowList';
 import { GraphViewer } from './components/GraphViewer';
 import { RunConfigModal } from './components/RunConfigModal';
 import { NodeDetailsPanel } from './components/NodeDetailsPanel';
+import { ExecutionControlPanel } from './components/ExecutionControlPanel';
 import { useEventStream } from './hooks/useEventStream';
 import { Play, Trash2 } from 'lucide-react';
 
@@ -136,6 +137,16 @@ export default function App() {
                         </div>
                     )}
                 </div>
+
+                {/* Execution Control Panel */}
+                {currentRunId && (
+                    <ExecutionControlPanel
+                        runId={currentRunId}
+                        workflowName={workflows.find(w => w.id === selectedId)?.name || ''}
+                        events={events}
+                        onClose={() => setCurrentRunId(null)}
+                    />
+                )}
 
                 {/* Detailed Logs Panel */}
                 <div className="h-48 border-t border-gray-800 bg-gray-900 flex flex-col">

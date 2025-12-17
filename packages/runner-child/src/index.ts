@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'url';
-import { WorkflowDefinition } from '@stepforge/sdk';
+import { WorkflowDefinition, RunControlSignal } from '@stepforge/sdk';
+import * as readline from 'readline';
 
 async function main() {
     const args = process.argv.slice(2);
@@ -10,6 +11,28 @@ async function main() {
 
     const [workspaceRoot, workflowFile, workflowId, runId, version, inputsJson = '{}'] = args;
     const inputs = JSON.parse(inputsJson);
+
+    // Control signal state
+    let currentSignal: RunControlSignal | null = null;
+
+    // Setup stdin listener for control signals
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        terminal: false
+    });
+
+    rl.on('line', (line) => {
+        try {
+            const msg = JSON.parse(line);
+            if (msg.type === 'control' && msg.signal) {
+                currentSignal = msg.signal as RunControlSignal;
+                console.error(`[Control] Received signal: ${currentSignal}`);
+            }
+        } catch (e) {
+            // Ignore parse errors
+        }
+    });
 
     // Emit helper
     const emit = (event: any) => {
@@ -36,7 +59,11 @@ async function main() {
         await executeWorkflow(def, version, {
             runId,
             onEvent: emit,
-            inputs
+            inputs,
+            getControlSignal: () => currentSignal,
+            onControlStateChange: (state) => {
+                emit({ type: 'run:control_state', state });
+            }
         });
 
     } catch (e: any) {
