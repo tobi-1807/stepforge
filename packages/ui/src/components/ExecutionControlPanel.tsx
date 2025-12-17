@@ -65,10 +65,7 @@ export function ExecutionControlPanel({
 
     if (lastEvent.type === "run:end") {
       setIsRunning(false);
-      // Auto-close panel after a short delay when run completes
-      setTimeout(() => {
-        onClose();
-      }, 3000);
+      onClose();
     }
 
     if (lastEvent.type === "run:paused") {
