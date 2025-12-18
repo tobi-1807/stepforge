@@ -127,91 +127,88 @@ export function ExecutionControlPanel({
   if (!runId) return null;
 
   return (
-    <div className="border-t border-gray-800 bg-gray-900 p-4">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-sm font-semibold text-white">
-            Execution Control
-          </h3>
-          <p className="text-xs text-gray-400 mt-0.5">{workflowName}</p>
+    <div className="border-t border-gray-800 bg-gray-900 px-4 py-2">
+      {/* Header with Status and Timer on one line */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            {isRunning && !isPaused && (
+              <>
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-xs text-green-400">Running</span>
+              </>
+            )}
+            {isPaused && (
+              <>
+                <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
+                <span className="text-xs text-yellow-400">Paused</span>
+              </>
+            )}
+            {!isRunning && (
+              <>
+                <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
+                <span className="text-xs text-gray-400">Completed</span>
+              </>
+            )}
+          </div>
+          
+          <span className="text-xs text-gray-500">•</span>
+          
+          <span className="text-xs text-gray-400">{workflowName}</span>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-gray-400">
-          <Clock size={14} />
-          <span className="font-mono">{formatDuration(duration)}</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <Clock size={12} />
+            <span className="font-mono">{formatDuration(duration)}</span>
+          </div>
+
+          {/* Control Buttons */}
+          <div className="flex items-center gap-1.5">
+            {!isPaused ? (
+              <button
+                onClick={handlePause}
+                disabled={!isRunning}
+                className="flex items-center gap-1 px-2 py-1 bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-xs rounded transition-colors"
+                title="Pause execution"
+              >
+                <Pause size={12} />
+                Pause
+              </button>
+            ) : (
+              <button
+                onClick={handleResume}
+                className="flex items-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded transition-colors"
+                title="Resume execution"
+              >
+                <Play size={12} fill="currentColor" />
+                Resume
+              </button>
+            )}
+
+            <button
+              onClick={handleCancel}
+              disabled={!isRunning}
+              className="flex items-center gap-1 px-2 py-1 bg-red-600 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-xs rounded transition-colors"
+              title="Cancel execution"
+            >
+              <Square size={12} />
+              Cancel
+            </button>
+          </div>
         </div>
-      </div>
-
-      {/* Status Indicator */}
-      <div className="mb-4">
-        <div className="flex items-center gap-2">
-          {isRunning && !isPaused && (
-            <>
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-green-400">Running</span>
-            </>
-          )}
-          {isPaused && (
-            <>
-              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-              <span className="text-sm text-yellow-400">Paused</span>
-              {controlState?.pausedAt && (
-                <span className="text-xs text-gray-500">
-                  at {controlState.pausedAt}
-                </span>
-              )}
-            </>
-          )}
-          {!isRunning && (
-            <>
-              <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-              <span className="text-sm text-gray-400">Completed</span>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Control Buttons */}
-      <div className="flex items-center gap-2 mb-4">
-        {!isPaused ? (
-          <button
-            onClick={handlePause}
-            disabled={!isRunning}
-            className="flex items-center gap-2 px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm rounded transition-colors"
-          >
-            <Pause size={14} />
-            Pause
-          </button>
-        ) : (
-          <button
-            onClick={handleResume}
-            className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm rounded transition-colors"
-          >
-            <Play size={14} fill="currentColor" />
-            Resume
-          </button>
-        )}
-
-        <button
-          onClick={handleCancel}
-          disabled={!isRunning}
-          className="flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm rounded transition-colors"
-        >
-          <Square size={14} />
-          Cancel
-        </button>
       </div>
 
       {/* Failed Steps */}
       {controlState && controlState.failedSteps.length > 0 && (
-        <div className="border border-red-800 bg-red-900/20 rounded p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertCircle size={14} className="text-red-400" />
-            <span className="text-sm font-semibold text-red-400">
+        <div className="border border-red-800 bg-red-900/20 rounded p-2 mt-2">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <AlertCircle size={12} className="text-red-400" />
+            <span className="text-xs font-semibold text-red-400">
               Failed Steps
             </span>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1">
             {controlState.failedSteps.map((step, idx) => (
               <div key={idx} className="text-xs">
                 <div className="text-gray-300 font-mono">{step.nodeId}</div>
