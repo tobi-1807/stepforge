@@ -143,6 +143,9 @@ export function GraphViewer({
         onNodeClick={(_, node) => onNodeClick?.(node.id)}
         nodeTypes={nodeTypes}
         fitView
+        proOptions={{
+          hideAttribution: true,
+        }}
       >
         <Background />
         <Controls
