@@ -9,7 +9,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { StatusNode } from "./StatusNode";
+import { MapContainerNode } from "./MapContainerNode";
 import { NodeStatus } from "./NodeStatusIndicator";
+import { MapState } from "../hooks/useEventStream";
 
 // Local type definitions to avoid linking SDK for MVP UI
 type GraphNode = {
@@ -22,16 +24,23 @@ type GraphNode = {
 type Props = {
   graph: any;
   nodeStates: Record<string, string>;
+  mapStates: Record<string, MapState>;
   onNodeClick?: (nodeId: string) => void;
 };
 
-export function GraphViewer({ graph, nodeStates, onNodeClick }: Props) {
+export function GraphViewer({
+  graph,
+  nodeStates,
+  mapStates,
+  onNodeClick,
+}: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
 
   const nodeTypes = useMemo(
     () => ({
       statusNode: StatusNode,
+      mapContainerNode: MapContainerNode,
     }),
     []
   );
@@ -52,6 +61,10 @@ export function GraphViewer({ graph, nodeStates, onNodeClick }: Props) {
     const NODE_HEIGHT = 80; // Slightly taller for the new component
     const GAP = 40;
     const PADDING = 40;
+    const MAP_HEADER_HEIGHT = 90; // Extra height for map header with counts
+    const CONTAINER_WIDTH = 250;
+    const CHILD_NODE_WIDTH = 180; // StatusNode is w-[180px]
+    const CHILD_CENTER_X = (CONTAINER_WIDTH - CHILD_NODE_WIDTH) / 2; // Center children horizontally
 
     const nodeMap = graph.nodes;
 
@@ -63,7 +76,7 @@ export function GraphViewer({ graph, nodeStates, onNodeClick }: Props) {
       const node = nodeMap[nodeId];
       if (!node) return currentY;
 
-      // Check if it's a group
+      // Check if it's a container (group or map)
       const children = getChildren(nodeId);
 
       if (node.kind === "group") {
@@ -78,7 +91,7 @@ export function GraphViewer({ graph, nodeStates, onNodeClick }: Props) {
             backgroundColor: "rgba(255, 255, 255, 0.05)",
             border: "1px dashed #555",
             borderRadius: 8,
-            width: 250, // Wider for group
+            width: CONTAINER_WIDTH,
             color: "#fff",
             padding: 0,
             zIndex: -1,
@@ -94,7 +107,7 @@ export function GraphViewer({ graph, nodeStates, onNodeClick }: Props) {
           layoutNodes.push({
             id: child.id,
             type: "statusNode",
-            position: { x: PADDING / 2, y: childY },
+            position: { x: CHILD_CENTER_X, y: childY },
             data: { label: child.title, status: "pending" },
             parentId: node.id,
             extent: "parent",
@@ -103,12 +116,61 @@ export function GraphViewer({ graph, nodeStates, onNodeClick }: Props) {
           childY += NODE_HEIGHT + GAP;
         });
 
-        groupHeight = childY; // padding included at start
+        groupHeight = childY;
 
         // Update group height
         groupNode.style.height = groupHeight;
 
         return currentY + groupHeight + GAP;
+      } else if (node.kind === "map") {
+        // Map container node
+        let mapHeight = PADDING * 2 + MAP_HEADER_HEIGHT;
+        let childY = MAP_HEADER_HEIGHT + PADDING;
+
+        const mapNode: any = {
+          id: node.id,
+          type: "mapContainerNode",
+          position: { x: X_OFFSET, y: currentY },
+          data: {
+            label: node.title,
+            status: "pending",
+            // counts and spotlight will be updated in the status effect
+          },
+          style: {
+            width: CONTAINER_WIDTH,
+            zIndex: -1,
+          },
+          parentId: parentId,
+        };
+
+        // Add map node first
+        layoutNodes.push(mapNode);
+
+        // Process template step children
+        children.forEach((child) => {
+          layoutNodes.push({
+            id: child.id,
+            type: "statusNode",
+            position: { x: CHILD_CENTER_X, y: childY },
+            data: {
+              label: child.title,
+              status: "pending",
+              isMapTemplateStep: true,
+              mapNodeId: node.id,
+            },
+            parentId: node.id,
+            extent: "parent",
+          });
+
+          childY += NODE_HEIGHT + GAP;
+        });
+
+        mapHeight = childY;
+
+        // Update map container style with calculated height
+        mapNode.style.height = mapHeight;
+
+        return currentY + mapHeight + GAP;
       } else {
         // Standard Step
         layoutNodes.push({
@@ -138,12 +200,67 @@ export function GraphViewer({ graph, nodeStates, onNodeClick }: Props) {
     setEdges(newEdges);
   }, [graph]);
 
-  // Update node status based on state
+  // Update node status based on state (existing logic + map enhancements)
   useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => {
+        // Handle map container nodes
+        if (node.type === "mapContainerNode") {
+          const mapState = mapStates[node.id];
+          const status = nodeStates[node.id] as NodeStatus | undefined;
+
+          const newData = {
+            ...node.data,
+            status: status ?? node.data.status,
+            counts: mapState?.counts,
+            spotlight: mapState?.spotlight,
+          };
+
+          // Only update if something changed
+          if (
+            node.data.status !== newData.status ||
+            node.data.counts !== newData.counts ||
+            node.data.spotlight !== newData.spotlight
+          ) {
+            return {
+              ...node,
+              data: newData,
+            };
+          }
+          return node;
+        }
+
+        // Handle template steps within maps - highlight when spotlight is active
+        if (node.data?.isMapTemplateStep && node.data?.mapNodeId) {
+          const mapState = mapStates[node.data.mapNodeId];
+          const isSpotlightActive =
+            mapState?.spotlight?.activeTemplateNodeId === node.id;
+          const status = nodeStates[node.id] as NodeStatus | undefined;
+
+          // If spotlight is pointing to this template step, show it as "running"
+          // Otherwise, keep it pending or use whatever status is recorded
+          const effectiveStatus = isSpotlightActive
+            ? "running"
+            : status ?? "pending";
+
+          if (
+            node.data.status !== effectiveStatus ||
+            node.data.isSpotlightActive !== isSpotlightActive
+          ) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                status: effectiveStatus,
+                isSpotlightActive,
+              },
+            };
+          }
+          return node;
+        }
+
+        // Standard node status update
         const status = nodeStates[node.id] as NodeStatus | undefined;
-        // Only update if status changed or wasn't set (simple check)
         if (node.data && node.data.status !== status && status) {
           return {
             ...node,
@@ -156,7 +273,7 @@ export function GraphViewer({ graph, nodeStates, onNodeClick }: Props) {
         return node;
       })
     );
-  }, [nodeStates, setNodes]);
+  }, [nodeStates, mapStates, setNodes]);
 
   return (
     <div className="h-full w-full bg-gray-900">

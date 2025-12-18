@@ -5,6 +5,9 @@ import {
   GraphNode,
   GraphEdge,
   StepFn,
+  MapOptions,
+  LoopBuilder,
+  StepNodeOptions,
 } from "./types.js";
 export * from "./types.js";
 
@@ -89,6 +92,74 @@ export function buildGraph(
         traverse(fn, id, logicalPath, null);
 
         lastNodeInScope = id;
+      },
+      map<T>(
+        title: string,
+        opts: MapOptions<T>,
+        buildTemplate: (item: T, index: number, loop: LoopBuilder) => void
+      ) {
+        const logicalPath = parentPath ? `${parentPath}/${title}` : title;
+        const mapNodeId = generateNodeId(version, logicalPath);
+
+        // Create the map node
+        nodes[mapNodeId] = {
+          id: mapNodeId,
+          kind: "map",
+          title,
+          parentId,
+          meta: {
+            map: {
+              onError: opts.onError ?? "fail-fast",
+              maxConcurrency: opts.maxConcurrency ?? 1,
+            },
+          },
+        };
+
+        // Sequence dependency from previous sibling
+        if (lastNodeInScope) {
+          edges.push({
+            from: lastNodeInScope,
+            to: mapNodeId,
+            type: "sequence",
+          });
+        }
+
+        // Traverse template steps using a LoopBuilder
+        // We call buildTemplate once in "template mode" with dummy values
+        // The template step titles must be static (not dependent on item)
+        let lastTemplateNodeId: string | null = null;
+
+        const loopBuilder: LoopBuilder = {
+          step(stepTitle: string, _fn: StepFn, stepOptions?: StepNodeOptions) {
+            const templateLogicalPath = `${logicalPath}/${stepTitle}`;
+            const templateNodeId = generateNodeId(version, templateLogicalPath);
+
+            nodes[templateNodeId] = {
+              id: templateNodeId,
+              kind: "step",
+              title: stepTitle,
+              parentId: mapNodeId,
+              meta: stepOptions,
+            };
+
+            // Sequence edges between template steps
+            if (lastTemplateNodeId) {
+              edges.push({
+                from: lastTemplateNodeId,
+                to: templateNodeId,
+                type: "sequence",
+              });
+            }
+
+            lastTemplateNodeId = templateNodeId;
+          },
+        };
+
+        // Call buildTemplate with dummy item to discover template structure
+        // NOTE: Template step titles must be static - don't use item/index in titles
+        buildTemplate(undefined as T, 0, loopBuilder);
+
+        lastNodeInScope = mapNodeId;
       },
     };
 
@@ -190,16 +261,71 @@ export async function executeWorkflow(
     }
   };
 
+  // Helper to create a run store interface
+  const createRunStore = (): import("./types.js").RunStore => ({
+    get: (key) => runState.get(key) as any,
+    set: (key, value) => {
+      runState.set(key, value);
+    },
+    require: (key) => {
+      if (!runState.has(key))
+        throw new Error(`Missing required run key: ${key}`);
+      return runState.get(key) as any;
+    },
+  });
+
+  // Helper to create a log interface for a node
+  const createLogInterface = (nodeId: string, nodeTitle: string) => ({
+    info: (msg: string, data?: any) =>
+      onEvent({
+        type: "node:log",
+        nodeId,
+        nodeTitle,
+        level: "info",
+        msg,
+        data,
+      }),
+    warn: (msg: string, data?: any) =>
+      onEvent({
+        type: "node:log",
+        nodeId,
+        nodeTitle,
+        level: "warn",
+        msg,
+        data,
+      }),
+    error: (msg: string, data?: any) =>
+      onEvent({
+        type: "node:log",
+        nodeId,
+        nodeTitle,
+        level: "error",
+        msg,
+        data,
+      }),
+    debug: (msg: string, data?: any) =>
+      onEvent({
+        type: "node:log",
+        nodeId,
+        nodeTitle,
+        level: "debug",
+        msg,
+        data,
+      }),
+  });
+
   const traverseAndExecute = async (
     buildFn: (b: WorkflowBuilder) => void,
     parentPath: string,
     parentId: string | null
   ) => {
     const items: Array<{
-      type: "step" | "group";
+      type: "step" | "group" | "map";
       title: string;
       fn?: StepFn;
       buildFn?: (b: WorkflowBuilder) => void;
+      mapOpts?: MapOptions<any>;
+      mapBuildTemplate?: (item: any, index: number, loop: LoopBuilder) => void;
       options?: any;
     }> = [];
 
@@ -209,6 +335,18 @@ export async function executeWorkflow(
       },
       group(title, buildFn, options) {
         items.push({ type: "group", title, buildFn, options });
+      },
+      map<T>(
+        title: string,
+        opts: MapOptions<T>,
+        buildTemplate: (item: T, index: number, loop: LoopBuilder) => void
+      ) {
+        items.push({
+          type: "map",
+          title,
+          mapOpts: opts,
+          mapBuildTemplate: buildTemplate,
+        });
       },
     };
 
@@ -238,44 +376,7 @@ export async function executeWorkflow(
         const ctx: import("./types.js").StepContext = {
           nodeId,
           runId,
-          log: {
-            info: (msg, data) =>
-              onEvent({
-                type: "node:log",
-                nodeId,
-                nodeTitle,
-                level: "info",
-                msg,
-                data,
-              }),
-            warn: (msg, data) =>
-              onEvent({
-                type: "node:log",
-                nodeId,
-                nodeTitle,
-                level: "warn",
-                msg,
-                data,
-              }),
-            error: (msg, data) =>
-              onEvent({
-                type: "node:log",
-                nodeId,
-                nodeTitle,
-                level: "error",
-                msg,
-                data,
-              }),
-            debug: (msg, data) =>
-              onEvent({
-                type: "node:log",
-                nodeId,
-                nodeTitle,
-                level: "debug",
-                msg,
-                data,
-              }),
-          },
+          log: createLogInterface(nodeId, nodeTitle),
           progress: (p) =>
             onEvent({ type: "node:progress", nodeId, nodeTitle, data: p }),
           artifact: (a) =>
@@ -288,17 +389,7 @@ export async function executeWorkflow(
           },
           isPaused: () => isPaused,
           waitIfPaused: async () => await waitIfPausedHelper(nodeId),
-          run: {
-            get: (key) => runState.get(key) as any,
-            set: (key, value) => {
-              runState.set(key, value);
-            },
-            require: (key) => {
-              if (!runState.has(key))
-                throw new Error(`Missing required run key: ${key}`);
-              return runState.get(key) as any;
-            },
-          },
+          run: createRunStore(),
         };
 
         try {
@@ -362,6 +453,359 @@ export async function executeWorkflow(
             at: new Date().toISOString(),
           });
           throw e;
+        }
+      } else if (item.type === "map" && item.mapOpts && item.mapBuildTemplate) {
+        // ─────────────────────────────────────────────────────────────────────
+        // Map node execution
+        // ─────────────────────────────────────────────────────────────────────
+        const mapNodeId = nodeId;
+        const mapOpts = item.mapOpts;
+        const buildTemplate = item.mapBuildTemplate;
+        const onError = mapOpts.onError ?? "fail-fast";
+
+        // Emit node:start for the map node (so existing UI status works)
+        onEvent({
+          type: "node:start",
+          nodeId: mapNodeId,
+          nodeTitle,
+          at: new Date().toISOString(),
+        });
+
+        // Collect template steps by calling buildTemplate in "template mode"
+        const templateSteps: Array<{
+          title: string;
+          fn: StepFn;
+          options?: StepNodeOptions;
+          nodeId: string;
+        }> = [];
+
+        const loopBuilder: LoopBuilder = {
+          step(stepTitle: string, fn: StepFn, stepOptions?: StepNodeOptions) {
+            const templateLogicalPath = `${logicalPath}/${stepTitle}`;
+            const templateNodeId = generateNodeId(version, templateLogicalPath);
+            templateSteps.push({
+              title: stepTitle,
+              fn,
+              options: stepOptions,
+              nodeId: templateNodeId,
+            });
+          },
+        };
+
+        // Discover template structure (with dummy item)
+        buildTemplate(undefined as any, 0, loopBuilder);
+
+        let mapError: Error | null = null;
+        let mapStatus: "success" | "failed" | "canceled" = "success";
+
+        try {
+          // Create context for items() evaluation
+          const mapItemsCtx: import("./types.js").MapItemsContext = {
+            runId,
+            run: createRunStore(),
+            log: createLogInterface(mapNodeId, nodeTitle),
+          };
+
+          // Evaluate items at runtime
+          const itemsResult = await mapOpts.items(mapItemsCtx);
+          const itemsArray = Array.isArray(itemsResult) ? itemsResult : [];
+          const total = itemsArray.length;
+
+          // Initialize counts
+          const counts: import("./types.js").MapCounts = {
+            total,
+            pending: total,
+            running: 0,
+            completed: 0,
+            failed: 0,
+            skipped: 0,
+          };
+
+          // Emit map:start
+          onEvent({
+            type: "map:start",
+            runId,
+            mapNodeId,
+            total,
+            at: new Date().toISOString(),
+            counts: { ...counts },
+          });
+
+          // Sequential iteration
+          for (let i = 0; i < itemsArray.length; i++) {
+            if (isCancelled) {
+              mapStatus = "canceled";
+              // Mark remaining as skipped
+              counts.skipped += counts.pending;
+              counts.pending = 0;
+              break;
+            }
+
+            const currentItem = itemsArray[i];
+            const iterationId = `${runId}:${mapNodeId}:${i}`;
+            const key = mapOpts.key?.(currentItem, i) ?? String(i);
+            const itemStartTime = Date.now();
+
+            // Update counts
+            counts.pending--;
+            counts.running = 1;
+
+            // Emit map:item:start
+            onEvent({
+              type: "map:item:start",
+              runId,
+              mapNodeId,
+              at: new Date().toISOString(),
+              iterationId,
+              index: i,
+              key,
+            });
+
+            // Emit progress with spotlight
+            onEvent({
+              type: "map:progress",
+              runId,
+              mapNodeId,
+              at: new Date().toISOString(),
+              counts: { ...counts },
+              spotlight: {
+                iterationId,
+                index: i,
+                key,
+                activeTemplateNodeId: templateSteps[0]?.nodeId,
+              },
+            });
+
+            let iterationFailed = false;
+            let iterationError:
+              | import("./types.js").SerializedError
+              | undefined;
+
+            // Execute template steps for this iteration
+            for (const templateStep of templateSteps) {
+              if (isCancelled) break;
+
+              // Check for pause/cancel before each template step
+              await waitIfPausedHelper(templateStep.nodeId);
+              if (isCancelled) break;
+
+              const templateStepStartTime = Date.now();
+
+              // Emit map:templateStep:start
+              onEvent({
+                type: "map:templateStep:start",
+                runId,
+                mapNodeId,
+                at: new Date().toISOString(),
+                iterationId,
+                templateNodeId: templateStep.nodeId,
+              });
+
+              // Update spotlight
+              onEvent({
+                type: "map:progress",
+                runId,
+                mapNodeId,
+                at: new Date().toISOString(),
+                counts: { ...counts },
+                spotlight: {
+                  iterationId,
+                  index: i,
+                  key,
+                  activeTemplateNodeId: templateStep.nodeId,
+                },
+              });
+
+              // Create step context with loop info
+              const stepCtx: import("./types.js").StepContext = {
+                nodeId: templateStep.nodeId,
+                runId,
+                log: createLogInterface(
+                  templateStep.nodeId,
+                  templateStep.title
+                ),
+                progress: (p) =>
+                  onEvent({
+                    type: "node:progress",
+                    nodeId: templateStep.nodeId,
+                    nodeTitle: templateStep.title,
+                    data: p,
+                  }),
+                artifact: (a) =>
+                  onEvent({
+                    type: "node:artifact",
+                    nodeId: templateStep.nodeId,
+                    nodeTitle: templateStep.title,
+                    data: a,
+                  }),
+                output: (o) =>
+                  onEvent({
+                    type: "node:output",
+                    nodeId: templateStep.nodeId,
+                    nodeTitle: templateStep.title,
+                    data: o,
+                  }),
+                isCancelled: () => isCancelled,
+                throwIfCancelled: () => {
+                  if (isCancelled) throw new Error("Cancelled");
+                },
+                isPaused: () => isPaused,
+                waitIfPaused: async () =>
+                  await waitIfPausedHelper(templateStep.nodeId),
+                run: createRunStore(),
+                loop: {
+                  mapNodeId,
+                  iterationId,
+                  index: i,
+                  key,
+                  item: currentItem,
+                },
+              };
+
+              try {
+                await templateStep.fn(stepCtx);
+
+                // Emit map:templateStep:end success
+                onEvent({
+                  type: "map:templateStep:end",
+                  runId,
+                  mapNodeId,
+                  at: new Date().toISOString(),
+                  iterationId,
+                  templateNodeId: templateStep.nodeId,
+                  status: "success",
+                  durationMs: Date.now() - templateStepStartTime,
+                });
+              } catch (e: any) {
+                // Emit map:templateStep:end failed
+                onEvent({
+                  type: "map:templateStep:end",
+                  runId,
+                  mapNodeId,
+                  at: new Date().toISOString(),
+                  iterationId,
+                  templateNodeId: templateStep.nodeId,
+                  status: "failed",
+                  durationMs: Date.now() - templateStepStartTime,
+                  error: { message: e.message, stack: e.stack },
+                });
+
+                iterationFailed = true;
+                iterationError = { message: e.message, stack: e.stack };
+
+                if (onError === "fail-fast") {
+                  mapError = e;
+                  break;
+                }
+                // If continue, we break out of template steps but continue iterations
+                break;
+              }
+            }
+
+            // Update counts after iteration
+            counts.running = 0;
+            if (iterationFailed) {
+              counts.failed++;
+            } else if (!isCancelled) {
+              counts.completed++;
+            }
+
+            // Emit map:item:end
+            onEvent({
+              type: "map:item:end",
+              runId,
+              mapNodeId,
+              at: new Date().toISOString(),
+              iterationId,
+              status: iterationFailed
+                ? "failed"
+                : isCancelled
+                ? "skipped"
+                : "success",
+              durationMs: Date.now() - itemStartTime,
+              error: iterationError,
+            });
+
+            // Emit progress after item completion
+            onEvent({
+              type: "map:progress",
+              runId,
+              mapNodeId,
+              at: new Date().toISOString(),
+              counts: { ...counts },
+            });
+
+            // If fail-fast and we have an error, stop
+            if (mapError && onError === "fail-fast") {
+              mapStatus = "failed";
+              // Mark remaining as skipped
+              counts.skipped += counts.pending;
+              counts.pending = 0;
+              break;
+            }
+          }
+
+          // Determine final status
+          if (isCancelled) {
+            mapStatus = "canceled";
+          } else if (counts.failed > 0) {
+            mapStatus = "failed";
+          }
+
+          // Emit map:end
+          onEvent({
+            type: "map:end",
+            runId,
+            mapNodeId,
+            at: new Date().toISOString(),
+            status: mapStatus,
+            counts: { ...counts },
+          });
+        } catch (e: any) {
+          // Handle error during items() evaluation or other unexpected errors
+          mapError = e;
+          mapStatus = "failed";
+
+          onEvent({
+            type: "map:end",
+            runId,
+            mapNodeId,
+            at: new Date().toISOString(),
+            status: "failed",
+            counts: {
+              total: 0,
+              pending: 0,
+              running: 0,
+              completed: 0,
+              failed: 1,
+              skipped: 0,
+            },
+          });
+        }
+
+        // Emit node:end for the map node
+        if (mapStatus === "success") {
+          onEvent({
+            type: "node:end",
+            nodeId: mapNodeId,
+            nodeTitle,
+            status: "success",
+            at: new Date().toISOString(),
+          });
+        } else {
+          onEvent({
+            type: "node:end",
+            nodeId: mapNodeId,
+            nodeTitle,
+            status: "failure",
+            error: mapError?.message ?? `Map ${mapStatus}`,
+            at: new Date().toISOString(),
+          });
+
+          // If fail-fast and we have an error, propagate it
+          if (mapError && (mapOpts.onError ?? "fail-fast") === "fail-fast") {
+            throw mapError;
+          }
         }
       }
     }

@@ -21,7 +21,7 @@ export default function App() {
     const [showConfigModal, setShowConfigModal] = useState(false);
     const [selectedNode, setSelectedNode] = useState<any>(null);
 
-    const { nodeStates, events, clearEvents } = useEventStream(currentRunId);
+    const { nodeStates, mapStates, events, clearEvents } = useEventStream(currentRunId);
 
     const fetchWorkflows = () => {
         fetch('/api/workflows')
@@ -124,10 +124,12 @@ export default function App() {
                             <GraphViewer
                                 graph={graph}
                                 nodeStates={nodeStates}
+                                mapStates={mapStates}
                                 onNodeClick={handleNodeClick}
                             />
                             <NodeDetailsPanel
                                 node={selectedNode}
+                                mapState={selectedNode?.kind === 'map' ? mapStates[selectedNode.id] : undefined}
                                 onClose={() => setSelectedNode(null)}
                             />
                         </>
