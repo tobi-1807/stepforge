@@ -12,6 +12,7 @@ import { StatusNode } from "./StatusNode";
 import { MapContainerNode } from "./MapContainerNode";
 import { NodeStatus } from "./NodeStatusIndicator";
 import { MapState } from "../hooks/useEventStream";
+import { layoutGraph } from "../hooks/useElkLayout";
 
 // Local type definitions to avoid linking SDK for MVP UI
 type GraphNode = {
@@ -45,160 +46,17 @@ export function GraphViewer({
     []
   );
 
+  // Apply ELK layout when graph changes
   useEffect(() => {
     if (!graph) return;
 
-    // Helper to find children
-    const getChildren = (parentId: string): any[] => {
-      return Object.values(graph.nodes).filter(
-        (n: any) => n.parentId === parentId
-      );
-    };
-
-    const layoutNodes: any[] = [];
-    let y = 0;
-    const X_OFFSET = 250;
-    const NODE_HEIGHT = 80; // Slightly taller for the new component
-    const GAP = 40;
-    const PADDING = 40;
-    const MAP_HEADER_HEIGHT = 90; // Extra height for map header with counts
-    const CONTAINER_WIDTH = 250;
-    const CHILD_NODE_WIDTH = 180; // StatusNode is w-[180px]
-    const CHILD_CENTER_X = (CONTAINER_WIDTH - CHILD_NODE_WIDTH) / 2; // Center children horizontally
-
-    const nodeMap = graph.nodes;
-
-    const processNode = (
-      nodeId: string,
-      currentY: number,
-      parentId: string | undefined
-    ): number => {
-      const node = nodeMap[nodeId];
-      if (!node) return currentY;
-
-      // Check if it's a container (group or map)
-      const children = getChildren(nodeId);
-
-      if (node.kind === "group") {
-        let groupHeight = PADDING * 2;
-        let childY = PADDING;
-
-        const groupNode: any = {
-          id: node.id,
-          position: { x: X_OFFSET, y: currentY },
-          data: { label: node.title },
-          style: {
-            backgroundColor: "rgba(255, 255, 255, 0.05)",
-            border: "1px dashed #555",
-            borderRadius: 8,
-            width: CONTAINER_WIDTH,
-            color: "#fff",
-            padding: 0,
-            zIndex: -1,
-          },
-          parentId: parentId,
-        };
-
-        // Add group first (parent)
-        layoutNodes.push(groupNode);
-
-        // Process children
-        children.forEach((child) => {
-          layoutNodes.push({
-            id: child.id,
-            type: "statusNode",
-            position: { x: CHILD_CENTER_X, y: childY },
-            data: { label: child.title, status: "pending" },
-            parentId: node.id,
-            extent: "parent",
-          });
-
-          childY += NODE_HEIGHT + GAP;
-        });
-
-        groupHeight = childY;
-
-        // Update group height
-        groupNode.style.height = groupHeight;
-
-        return currentY + groupHeight + GAP;
-      } else if (node.kind === "map") {
-        // Map container node
-        let mapHeight = PADDING * 2 + MAP_HEADER_HEIGHT;
-        let childY = MAP_HEADER_HEIGHT + PADDING;
-
-        const mapNode: any = {
-          id: node.id,
-          type: "mapContainerNode",
-          position: { x: X_OFFSET, y: currentY },
-          data: {
-            label: node.title,
-            status: "pending",
-            // counts and spotlight will be updated in the status effect
-          },
-          style: {
-            width: CONTAINER_WIDTH,
-            zIndex: -1,
-          },
-          parentId: parentId,
-        };
-
-        // Add map node first
-        layoutNodes.push(mapNode);
-
-        // Process template step children
-        children.forEach((child) => {
-          layoutNodes.push({
-            id: child.id,
-            type: "statusNode",
-            position: { x: CHILD_CENTER_X, y: childY },
-            data: {
-              label: child.title,
-              status: "pending",
-              isMapTemplateStep: true,
-              mapNodeId: node.id,
-            },
-            parentId: node.id,
-            extent: "parent",
-          });
-
-          childY += NODE_HEIGHT + GAP;
-        });
-
-        mapHeight = childY;
-
-        // Update map container style with calculated height
-        mapNode.style.height = mapHeight;
-
-        return currentY + mapHeight + GAP;
-      } else {
-        // Standard Step
-        layoutNodes.push({
-          id: node.id,
-          type: "statusNode",
-          position: { x: X_OFFSET, y: currentY },
-          data: { label: node.title, status: "pending" },
-          parentId: parentId,
-        });
-        return currentY + NODE_HEIGHT + GAP;
+    layoutGraph(graph).then(
+      ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
+        setNodes(layoutedNodes);
+        setEdges(layoutedEdges);
       }
-    };
-
-    getChildren(graph.rootId).forEach((n) => {
-      y = processNode(n.id, y, undefined);
-    });
-
-    const newEdges = graph.edges.map((e: any) => ({
-      id: `${e.from}-${e.to}`,
-      source: e.from,
-      target: e.to,
-      animated: true,
-      style: { stroke: "#555" },
-    }));
-
-    setNodes(layoutNodes);
-    setEdges(newEdges);
-  }, [graph]);
+    );
+  }, [graph, setNodes, setEdges]);
 
   // Update node status based on state (existing logic + map enhancements)
   useEffect(() => {
