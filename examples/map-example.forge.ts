@@ -21,12 +21,12 @@ export default defineWorkflow({
       description: "How many items should be generated and processed",
       default: 5,
     },
-  ],
+  ] as const,
   build: (wf) => {
     // Step 1: Generate items to process
     wf.step("Generate items", async (ctx) => {
-      // Use ctx.inputs for user-provided configuration
-      const count = (ctx.inputs.itemCount as number) ?? 5;
+      // ctx.inputs.itemCount is `number` — default is applied by runtime
+      const count = ctx.inputs.itemCount;
       const items = Array.from({ length: count }, (_, i) => ({
         id: `item-${i + 1}`,
         value: Math.floor(Math.random() * 100),

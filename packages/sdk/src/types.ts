@@ -6,7 +6,53 @@ export type RunControlState = {
   failedSteps: Array<{ nodeId: string; error: string }>;
 };
 
-export type StepFn = (ctx: StepContext) => Promise<void>;
+// ─────────────────────────────────────────────────────────────────────────────
+// Input type inference utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Maps InputParameter type strings to TypeScript types */
+type InputTypeMap = {
+  string: string;
+  number: number;
+  boolean: boolean;
+};
+
+/** Extract InputParameters that are required (required: true OR has default) */
+type RequiredInputParam<T extends InputParameter> =
+  T extends { required: true }
+    ? T
+    : T extends { default: infer _D }
+    ? T
+    : never;
+
+/** Extract InputParameters that are optional */
+type OptionalInputParam<T extends InputParameter> = T extends RequiredInputParam<T>
+  ? never
+  : T;
+
+/** Get the TypeScript type for a specific input name from the definitions */
+type InputTypeFor<
+  TDefs extends readonly InputParameter[],
+  Name extends string
+> = InputTypeMap[Extract<TDefs[number], { name: Name }>["type"]];
+
+/**
+ * Infer a strongly-typed inputs object from an `inputs` array definition.
+ * - Properties with `required: true` or `default` are non-optional
+ * - Other properties are optional (may be undefined)
+ *
+ * Usage: Use `inputs: [...] as const` to preserve literal types for inference.
+ */
+export type InferInputs<TDefs extends readonly InputParameter[]> =
+  // Required properties (required: true OR has default)
+  { [K in RequiredInputParam<TDefs[number]>["name"]]: InputTypeFor<TDefs, K> } &
+  // Optional properties
+  { [K in OptionalInputParam<TDefs[number]>["name"]]?: InputTypeFor<TDefs, K> };
+
+/** Default inputs type when no inputs are defined or inference fails */
+export type AnyInputs = Record<string, any>;
+
+export type StepFn<TInputs = AnyInputs> = (ctx: StepContext<TInputs>) => Promise<void>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Loop / Map types
@@ -20,10 +66,10 @@ export type RunStore = {
 };
 
 /** Context provided to the `items()` function in wf.map() */
-export type MapItemsContext = {
+export type MapItemsContext<TInputs = AnyInputs> = {
   runId: string;
-  /** User-provided workflow inputs (read-only) */
-  inputs: Record<string, any>;
+  /** User-provided workflow inputs (read-only, strongly typed when using `as const`) */
+  inputs: TInputs;
   run: RunStore;
   log: {
     info(msg: string, data?: any): void;
@@ -43,15 +89,15 @@ export type LoopContext = {
 };
 
 /** Builder passed to the map's build function for defining template steps */
-export type LoopBuilder = {
-  step(title: string, fn: StepFn, options?: StepNodeOptions): void;
+export type LoopBuilder<TInputs = AnyInputs> = {
+  step(title: string, fn: StepFn<TInputs>, options?: StepNodeOptions): void;
   // group() can be added later if needed
 };
 
 /** Options for wf.map() */
-export type MapOptions<T> = {
+export type MapOptions<T, TInputs = AnyInputs> = {
   /** Function that returns the items to iterate over (evaluated at runtime) */
-  items: (ctx: MapItemsContext) => Promise<T[]> | T[];
+  items: (ctx: MapItemsContext<TInputs>) => Promise<T[]> | T[];
   /** Optional function to derive a display key for each item */
   key?: (item: T, index: number) => string;
   /** Max concurrency (MVP: must be 1 or omitted) */
@@ -68,11 +114,11 @@ export type StepNodeOptions = {
   aws?: { service?: string };
 };
 
-export type StepContext = {
+export type StepContext<TInputs = AnyInputs> = {
   nodeId: string;
   runId: string;
-  /** User-provided workflow inputs (read-only) */
-  inputs: Record<string, any>;
+  /** User-provided workflow inputs (read-only, strongly typed when using `as const`) */
+  inputs: TInputs;
   log: {
     info(msg: string, data?: any): void;
     warn(msg: string, data?: any): void;
@@ -93,11 +139,11 @@ export type StepContext = {
   iteration?: RunStore;
 };
 
-export type WorkflowBuilder = {
-  step(title: string, fn: StepFn, options?: StepNodeOptions): void;
+export type WorkflowBuilder<TInputs = AnyInputs> = {
+  step(title: string, fn: StepFn<TInputs>, options?: StepNodeOptions): void;
   group(
     title: string,
-    build: (b: WorkflowBuilder) => void,
+    build: (b: WorkflowBuilder<TInputs>) => void,
     options?: StepNodeOptions
   ): void;
   /**
@@ -110,26 +156,35 @@ export type WorkflowBuilder = {
    */
   map<T>(
     title: string,
-    opts: MapOptions<T>,
-    build: (item: T, index: number, loop: LoopBuilder) => void
+    opts: MapOptions<T, TInputs>,
+    build: (item: T, index: number, loop: LoopBuilder<TInputs>) => void
   ): void;
   // Internal use only - for recursing
   _getInternalState?(): any;
 };
 
 export type InputParameter = {
-  name: string;
-  type: "string" | "number" | "boolean";
-  label: string;
-  description?: string;
-  required?: boolean;
-  default?: string | number | boolean;
+  readonly name: string;
+  readonly type: "string" | "number" | "boolean";
+  readonly label: string;
+  readonly description?: string;
+  readonly required?: boolean;
+  readonly default?: string | number | boolean;
 };
 
-export type WorkflowDefinition = {
+/**
+ * Workflow definition with strongly-typed inputs.
+ *
+ * Use `inputs: [...] as const` to enable automatic type inference for `ctx.inputs`.
+ *
+ * @template TInputsDef - The literal type of the inputs array (inferred from `as const`)
+ */
+export type WorkflowDefinition<
+  TInputsDef extends readonly InputParameter[] = readonly InputParameter[]
+> = {
   name: string;
-  inputs?: InputParameter[];
-  build: (wf: WorkflowBuilder) => void;
+  inputs?: TInputsDef;
+  build: (wf: WorkflowBuilder<InferInputs<TInputsDef>>) => void;
 };
 
 export type GraphNode = {

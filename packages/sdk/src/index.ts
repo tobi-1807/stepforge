@@ -8,10 +8,34 @@ import {
   MapOptions,
   LoopBuilder,
   StepNodeOptions,
+  InputParameter,
 } from "./types.js";
 export * from "./types.js";
 
-export function defineWorkflow(def: WorkflowDefinition): WorkflowDefinition {
+/**
+ * Define a workflow with strongly-typed inputs.
+ *
+ * Use `inputs: [...] as const` to enable automatic type inference for `ctx.inputs`.
+ *
+ * @example
+ * ```ts
+ * export default defineWorkflow({
+ *   name: "My Workflow",
+ *   inputs: [
+ *     { name: "count", type: "number", label: "Count", default: 5 },
+ *   ] as const,
+ *   build: (wf) => {
+ *     wf.step("Process", async (ctx) => {
+ *       // ctx.inputs.count is inferred as `number` (no cast needed)
+ *       const count = ctx.inputs.count;
+ *     });
+ *   },
+ * });
+ * ```
+ */
+export function defineWorkflow<
+  const TInputsDef extends readonly InputParameter[]
+>(def: WorkflowDefinition<TInputsDef>): WorkflowDefinition<TInputsDef> {
   return def;
 }
 
