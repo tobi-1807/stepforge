@@ -206,10 +206,45 @@ export async function executeWorkflow(
   const runState = new Map<string, unknown>();
   const failedSteps: Array<{ nodeId: string; error: string }> = [];
 
-  // Initialize runState with inputs
-  Object.entries(inputs).forEach(([key, value]) => {
-    runState.set(key, value);
-  });
+  // Iteration-scoped stores (keyed by iterationId)
+  const iterationStores = new Map<string, Map<string, unknown>>();
+
+  // Helper to generate a simple hash string from a key (for stable iterationIds)
+  const hashKey = (key: string): string => {
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) {
+      hash = (hash << 5) - hash + key.charCodeAt(i);
+      hash |= 0;
+    }
+    return (hash >>> 0).toString(16);
+  };
+
+  // Helper to create an iteration-scoped store
+  const createIterationStore = (
+    iterationId: string
+  ): import("./types.js").RunStore => {
+    let store = iterationStores.get(iterationId);
+    if (!store) {
+      store = new Map<string, unknown>();
+      iterationStores.set(iterationId, store);
+    }
+    return {
+      get: (key) => store!.get(key) as any,
+      set: (key, value) => {
+        store!.set(key, value);
+      },
+      require: (key) => {
+        if (!store!.has(key))
+          throw new Error(`Missing required iteration key: ${key}`);
+        return store!.get(key) as any;
+      },
+    };
+  };
+
+  // Helper to clear iteration store (called after each iteration completes)
+  const clearIterationStore = (iterationId: string) => {
+    iterationStores.delete(iterationId);
+  };
 
   // Helper to emit control state
   const emitControlState = (pausedAt?: string) => {
@@ -376,6 +411,7 @@ export async function executeWorkflow(
         const ctx: import("./types.js").StepContext = {
           nodeId,
           runId,
+          inputs,
           log: createLogInterface(nodeId, nodeTitle),
           progress: (p) =>
             onEvent({ type: "node:progress", nodeId, nodeTitle, data: p }),
@@ -502,6 +538,7 @@ export async function executeWorkflow(
           // Create context for items() evaluation
           const mapItemsCtx: import("./types.js").MapItemsContext = {
             runId,
+            inputs,
             run: createRunStore(),
             log: createLogInterface(mapNodeId, nodeTitle),
           };
@@ -542,8 +579,13 @@ export async function executeWorkflow(
             }
 
             const currentItem = itemsArray[i];
-            const iterationId = `${runId}:${mapNodeId}:${i}`;
-            const key = mapOpts.key?.(currentItem, i) ?? String(i);
+            // Compute display key (user-provided or index fallback)
+            const key = mapOpts.key?.(currentItem, i);
+            // Generate stable, scoped iterationId
+            const iterationId =
+              key !== undefined
+                ? `${mapNodeId}:${hashKey(key)}`
+                : `${mapNodeId}:${i}`;
             const itemStartTime = Date.now();
 
             // Update counts
@@ -616,10 +658,11 @@ export async function executeWorkflow(
                 },
               });
 
-              // Create step context with loop info
+              // Create step context with loop info and iteration store
               const stepCtx: import("./types.js").StepContext = {
                 nodeId: templateStep.nodeId,
                 runId,
+                inputs,
                 log: createLogInterface(
                   templateStep.nodeId,
                   templateStep.title
@@ -660,6 +703,7 @@ export async function executeWorkflow(
                   key,
                   item: currentItem,
                 },
+                iteration: createIterationStore(iterationId),
               };
 
               try {
@@ -710,13 +754,15 @@ export async function executeWorkflow(
               counts.completed++;
             }
 
-            // Emit map:item:end
+            // Emit map:item:end (includes index/key for UI consumption)
             onEvent({
               type: "map:item:end",
               runId,
               mapNodeId,
               at: new Date().toISOString(),
               iterationId,
+              index: i,
+              key,
               status: iterationFailed
                 ? "failed"
                 : isCancelled
@@ -725,6 +771,9 @@ export async function executeWorkflow(
               durationMs: Date.now() - itemStartTime,
               error: iterationError,
             });
+
+            // Clear iteration-scoped store to avoid memory buildup
+            clearIterationStore(iterationId);
 
             // Emit progress after item completion
             onEvent({

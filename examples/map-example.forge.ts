@@ -5,6 +5,11 @@ import { defineWorkflow } from "@stepforge/sdk";
  *
  * This workflow processes a list of items sequentially, with template steps
  * rendered once in the graph but executed for each item at runtime.
+ *
+ * Demonstrates:
+ * - ctx.inputs for accessing user-provided configuration
+ * - ctx.run for computed values shared between steps
+ * - ctx.iteration for per-iteration scratch space within map template steps
  */
 export default defineWorkflow({
   name: "Map Example - Process Items",
@@ -20,13 +25,15 @@ export default defineWorkflow({
   build: (wf) => {
     // Step 1: Generate items to process
     wf.step("Generate items", async (ctx) => {
-      const count = ctx.run.get<number>("itemCount") ?? 5;
+      // Use ctx.inputs for user-provided configuration
+      const count = (ctx.inputs.itemCount as number) ?? 5;
       const items = Array.from({ length: count }, (_, i) => ({
         id: `item-${i + 1}`,
         value: Math.floor(Math.random() * 100),
       }));
 
       ctx.log.info(`Generated ${items.length} items`);
+      // Use ctx.run for computed values shared between steps
       ctx.run.set("items", items);
     });
 
@@ -45,16 +52,23 @@ export default defineWorkflow({
           ctx.log.info(`Validating ${ctx.loop?.key}...`);
           await new Promise((r) => setTimeout(r, 200)); // Simulate work
 
+          const currentItem = ctx.loop?.item as { id: string; value: number };
+
           // Simulate occasional validation failures
-          if (ctx.loop?.item && (ctx.loop.item as any).value < 10) {
+          if (currentItem && currentItem.value < 10) {
             throw new Error(
-              `Item ${ctx.loop.key} has value too low: ${
-                (ctx.loop.item as any).value
-              }`
+              `Item ${ctx.loop?.key} has value too low: ${currentItem.value}`
             );
           }
 
-          ctx.log.info(`${ctx.loop?.key} validated successfully`);
+          // Store computed value in iteration-scoped scratch space
+          // This avoids polluting global ctx.run with per-iteration noise
+          const doubledValue = currentItem.value * 2;
+          ctx.iteration?.set("doubledValue", doubledValue);
+
+          ctx.log.info(
+            `${ctx.loop?.key} validated successfully, doubled: ${doubledValue}`
+          );
         });
 
         // Template step 2: Process item
@@ -62,10 +76,10 @@ export default defineWorkflow({
           ctx.log.info(`Processing ${ctx.loop?.key}...`);
           await new Promise((r) => setTimeout(r, 300)); // Simulate work
 
-          const item = ctx.loop?.item as { id: string; value: number };
-          const result = item.value * 2;
+          // Retrieve computed value from iteration store (no need to re-derive)
+          const doubledValue = ctx.iteration?.require<number>("doubledValue");
           ctx.log.info(
-            `${ctx.loop?.key} processed: ${item.value} -> ${result}`
+            `${ctx.loop?.key} processed with pre-computed value: ${doubledValue}`
           );
         });
 

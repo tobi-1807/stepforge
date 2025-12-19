@@ -22,6 +22,8 @@ export type RunStore = {
 /** Context provided to the `items()` function in wf.map() */
 export type MapItemsContext = {
   runId: string;
+  /** User-provided workflow inputs (read-only) */
+  inputs: Record<string, any>;
   run: RunStore;
   log: {
     info(msg: string, data?: any): void;
@@ -69,6 +71,8 @@ export type StepNodeOptions = {
 export type StepContext = {
   nodeId: string;
   runId: string;
+  /** User-provided workflow inputs (read-only) */
+  inputs: Record<string, any>;
   log: {
     info(msg: string, data?: any): void;
     warn(msg: string, data?: any): void;
@@ -85,6 +89,8 @@ export type StepContext = {
   run: RunStore;
   /** Present when executing inside a map iteration */
   loop?: LoopContext;
+  /** Iteration-scoped scratch store (present only inside map template steps) */
+  iteration?: RunStore;
 };
 
 export type WorkflowBuilder = {
@@ -242,6 +248,8 @@ export type MapItemEndEvent = {
   mapNodeId: string;
   at: string;
   iterationId: string;
+  index: number;
+  key?: string;
   status: "success" | "failed" | "skipped";
   durationMs: number;
   error?: SerializedError;

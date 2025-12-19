@@ -38,10 +38,11 @@ export default defineWorkflow({
     ],
     build: (wf) => {
         wf.step("Validate Configuration", async (ctx) => {
-            const env = ctx.run.get<string>("environment");
-            const region = ctx.run.get<string>("region");
-            const count = ctx.run.get<number>("instanceCount");
-            const monitoring = ctx.run.get<boolean>("enableMonitoring");
+            // Use ctx.inputs for user-provided configuration
+            const env = ctx.inputs.environment as string;
+            const region = ctx.inputs.region as string;
+            const count = ctx.inputs.instanceCount as number;
+            const monitoring = ctx.inputs.enableMonitoring as boolean;
 
             ctx.log.info(`Deploying to ${env} in ${region}`);
             ctx.log.info(`Instance count: ${count}`);
@@ -56,7 +57,7 @@ export default defineWorkflow({
 
         wf.group("Infrastructure Setup", (g) => {
             g.step("Create VPC", async (ctx) => {
-                const region = ctx.run.get<string>("region");
+                const region = ctx.inputs.region as string;
                 ctx.log.info(`Creating VPC in ${region}...`);
                 await new Promise(r => setTimeout(r, 1500));
                 ctx.log.info("VPC created successfully");
@@ -80,8 +81,8 @@ export default defineWorkflow({
         });
 
         wf.step("Deploy Application", async (ctx) => {
-            const count = ctx.run.get<number>("instanceCount") || 2;
-            const env = ctx.run.get<string>("environment");
+            const count = (ctx.inputs.instanceCount as number) || 2;
+            const env = ctx.inputs.environment as string;
 
             ctx.log.info(`Deploying ${count} instances to ${env}...`);
             await new Promise(r => setTimeout(r, 2000));
@@ -94,7 +95,7 @@ export default defineWorkflow({
         });
 
         wf.step("Setup Monitoring", async (ctx) => {
-            const monitoring = ctx.run.get<boolean>("enableMonitoring");
+            const monitoring = ctx.inputs.enableMonitoring as boolean;
 
             if (monitoring) {
                 ctx.log.info("Configuring CloudWatch dashboards...");
