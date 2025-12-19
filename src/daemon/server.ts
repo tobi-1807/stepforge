@@ -1,9 +1,10 @@
+#!/usr/bin/env node
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
-// import open from 'open';
 import chokidar from 'chokidar';
 import { discoverWorkflows, getWorkflow, reloadWorkflow, removeWorkflow } from './discovery.js';
 import { startRun } from './runner.js';
@@ -176,18 +177,34 @@ server.listen(PORT, async () => {
     });
 
     // Serve UI
-    // In production/monorepo dev, we assume standard layout
     try {
-        const uiDist = path.resolve(fileURLToPath(import.meta.url), '../../../ui/dist');
-        app.use(express.static(uiDist));
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
 
-        // SPA fallback
-        app.get('*', (req, res) => {
-            res.sendFile(path.join(uiDist, 'index.html'));
-        });
+        // In production (dist/daemon/server.js), UI is at ../ui
+        // In dev (src/daemon/server.ts), UI is at ../../ui/dist (if built)
+        let uiDist = path.resolve(__dirname, '../ui');
+        if (!fs.existsSync(uiDist)) {
+            uiDist = path.resolve(__dirname, '../../ui/dist');
+        }
 
-        console.log(`Open in browser: http://localhost:${PORT}`);
-        // await open(`http://localhost:${PORT}`);
+        if (fs.existsSync(uiDist)) {
+            app.use(express.static(uiDist));
+
+            // SPA fallback
+            app.get('*', (req, res) => {
+                const indexPath = path.join(uiDist, 'index.html');
+                if (fs.existsSync(indexPath)) {
+                    res.sendFile(indexPath);
+                } else {
+                    res.status(404).send("UI not built. Run 'npm run build' first.");
+                }
+            });
+            console.log(`Open in browser: http://localhost:${PORT}`);
+        } else {
+            console.warn("UI assets not found. Stepforge will run in API-only mode.");
+            console.warn("Run 'npm run build' to generate UI assets.");
+        }
     } catch (e) {
         console.warn("Failed to serve UI:", e);
     }

@@ -1,21 +1,34 @@
 {
   "name": "stepforge",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
+  "main": "dist/sdk/index.js",
+  "module": "dist/sdk/index.js",
+  "types": "dist/sdk/index.d.ts",
+  "bin": {
+    "stepforge": "dist/daemon/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "packageManager": "pnpm@9.0.0",
   "scripts": {
     "dev": "concurrently \"npm run dev:daemon examples\" \"npm run dev:ui\"",
     "dev:daemon": "tsx src/daemon/server.ts",
     "dev:ui": "vite ui",
-    "build": "tsc && vite build ui",
+    "build": "npm run build:backend && npm run build:ui",
+    "build:backend": "rm -rf dist && tsc",
+    "build:ui": "vite build ui",
     "test": "vitest"
   },
   "dependencies": {
     "chokidar": "^5.0.0",
     "express": "^4.18.2",
     "glob": "^10.3.10",
-    "open": "^11.0.0",
+    "tsx": "^4.7.0",
     "ws": "^8.16.0"
   },
   "devDependencies": {
@@ -40,5 +53,19 @@
     "typescript": "^5.3.3",
     "vite": "^5.0.8",
     "vitest": "^1.0.4"
+  },
+  "description": "Code-first workflow runner for developers",
+  "keywords": [
+    "workflow",
+    "automation",
+    "typescript",
+    "ops",
+    "runner"
+  ],
+  "author": "Stepforge Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stepforge/stepforge"
   }
 }
