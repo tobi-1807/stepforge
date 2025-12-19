@@ -1,0 +1,5 @@
+procs:
+  daemon:
+    shell: npm run dev:daemon examples
+  ui:
+    shell: npm run dev:ui
