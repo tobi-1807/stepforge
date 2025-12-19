@@ -13,12 +13,17 @@ export function startRun(
   wss: WebSocketServer,
   inputs?: Record<string, any>
 ) {
-  // Robust path resolution for monorepo
-  const projectRoot = path.resolve(__dirname, "../../../");
-  const childPath = path.resolve(
-    projectRoot,
-    "packages/runner-child/src/index.ts"
-  );
+  // Robust path resolution
+  // Check if we are running from dist (prod) or src (dev)
+  const isProd = __dirname.includes(path.sep + 'dist' + path.sep);
+  const projectRoot = path.resolve(__dirname, "../../");
+
+  const childPath = isProd
+    ? path.resolve(projectRoot, "dist/runner/index.js")
+    : path.resolve(projectRoot, "src/runner/index.ts");
+
+  const runnerCmd = isProd ? "node" : "tsx";
+  const runnerArgs = isProd ? [childPath] : ["tsx", childPath];
 
   // Broadcast helper
   const broadcast = (data: any) => {
@@ -34,12 +39,11 @@ export function startRun(
   broadcast({ type: "run:start", runId, workflowId: wf.id });
 
   // Spawn runner
-  // We use 'tsx' to run the child process source directly
   const inputsJson = inputs ? JSON.stringify(inputs) : "{}";
   const child = spawn(
-    "npx",
+    isProd ? "node" : "npx",
     [
-      "tsx",
+      ... (isProd ? [] : ["tsx"]),
       childPath,
       process.cwd(),
       wf.filePath,
@@ -50,11 +54,11 @@ export function startRun(
     ],
     {
       env: { ...process.env, STEPFORGE_MODE: "run", FORCE_COLOR: "1" },
-      stdio: ["pipe", "pipe", "pipe"], // Changed from 'ignore' to 'pipe' for stdin
+      stdio: ["pipe", "pipe", "pipe"],
     }
   );
 
-  console.log(`Spawned runner for ${runId}(pid ${child.pid})`);
+  console.log(`Spawned ${runnerCmd} runner for ${runId} (pid ${child.pid})`);
 
   // Register run with manager
   runManager.registerRun(runId, wf.id, child);

@@ -1,5 +1,5 @@
 import { ChildProcess } from 'child_process';
-import { RunControlSignal, RunControlState } from '@stepforge/sdk';
+import { RunControlSignal, RunControlState } from '../sdk/index.js';
 
 type RunControl = {
     runId: string;

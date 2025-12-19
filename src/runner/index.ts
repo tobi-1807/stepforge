@@ -1,5 +1,5 @@
 import { pathToFileURL } from "url";
-import { WorkflowDefinition, RunControlSignal } from "@stepforge/sdk";
+import { WorkflowDefinition, RunControlSignal } from "../sdk/index.js";
 import * as readline from "readline";
 
 async function main() {
@@ -57,7 +57,7 @@ async function main() {
     if (!def) throw new Error("No default export found");
 
     // 2. Execute
-    const { executeWorkflow } = await import("@stepforge/sdk");
+    const { executeWorkflow } = await import("../sdk/index.js");
 
     // Safety check for version
     if (!version) {

@@ -1,4 +1,4 @@
-import { defineWorkflow } from "@stepforge/sdk";
+import { defineWorkflow } from "../src/sdk/index.js";
 
 /**
  * Example workflow demonstrating wf.map() - the map/loop construct.

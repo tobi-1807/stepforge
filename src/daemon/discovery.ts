@@ -2,7 +2,7 @@ import { glob } from 'glob';
 import path from 'path';
 import fs from 'fs/promises';
 import { pathToFileURL } from 'url';
-import { WorkflowDefinition, buildGraph, WorkflowGraph } from '@stepforge/sdk';
+import { WorkflowDefinition, buildGraph, WorkflowGraph } from '../sdk/index.js';
 
 type CachedWorkflow = {
     id: string; // hash(relative path)

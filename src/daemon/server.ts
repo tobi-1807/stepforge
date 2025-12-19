@@ -26,7 +26,8 @@ const wss = new WebSocketServer({ server });
 // Workspace Root
 const workspaceArg = process.argv[2];
 if (!workspaceArg) {
-    console.error("Usage: stepforge-daemon <workspace-directory>");
+    console.error("Please specify a workspace directory")
+    console.error("Usage: stepforge <workspace-directory>");
     process.exit(1);
 }
 // Resolve relative to where the command was run (INIT_CWD), not the package dir

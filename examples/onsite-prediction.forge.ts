@@ -1,4 +1,4 @@
-import { defineWorkflow } from "@stepforge/sdk";
+import { defineWorkflow } from "../src/sdk/index.js";
 
 export default defineWorkflow({
     name: "Onsite Prediction",
