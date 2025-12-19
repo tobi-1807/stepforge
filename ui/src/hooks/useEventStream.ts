@@ -64,7 +64,8 @@ export function useEventStream(runId: string | null) {
         // So we just connect once.
 
         // In strict mode react, this might fire twice.
-        const ws = new WebSocket('ws://localhost:3000');
+        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${proto}://${window.location.host}/ws`);
 
         ws.onmessage = (msg) => {
             try {
