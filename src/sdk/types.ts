@@ -4,6 +4,8 @@ export type RunControlState = {
   signal: RunControlSignal | null;
   pausedAt?: string; // nodeId where paused
   failedSteps: Array<{ nodeId: string; error: string }>;
+  outputs: Record<string, any>;
+  mapOutputs: Record<string, Record<string, Record<string, any>>>;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,7 +174,10 @@ export type WorkflowBuilder<TInputs = AnyInputs> = {
    * 
    * @param title - Static title for the map node (do not interpolate item values)
    * @param opts - Map options including items() function and optional key()
-   * @param build - Function that defines template steps using the LoopBuilder
+   * @param build - Function that defines template steps.
+   *                IMPORTANT: Do not use the `item` or `index` parameters inside
+   *                the `loop.step()` callbacks as they are captured during discovery.
+   *                Use `ctx.loop.item` and `ctx.loop.index` instead for runtime values.
    */
   map<T>(
     title: string,

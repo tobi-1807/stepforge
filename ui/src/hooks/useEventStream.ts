@@ -56,6 +56,8 @@ export function useEventStream(runId: string | null) {
     const [events, setEvents] = useState<RunEvent[]>([]);
     const [nodeStates, setNodeStates] = useState<Record<string, string>>({});
     const [mapStates, setMapStates] = useState<Record<string, MapState>>({});
+    const [nodeOutputs, setNodeOutputs] = useState<Record<string, any>>({});
+    const [mapOutputs, setMapOutputs] = useState<Record<string, Record<string, Record<string, any>>>>({});
 
     useEffect(() => {
         // If no runId, we can still listen to ALL events if we want, 
@@ -67,6 +69,18 @@ export function useEventStream(runId: string | null) {
         const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const wsUrl = `${proto}://${window.location.host}/ws`;
         const ws = new WebSocket(wsUrl);
+
+        if (runId) {
+            fetch(`/api/runs/${runId}/state`)
+                .then(res => res.json())
+                .then(state => {
+                    if (state.outputs) setNodeOutputs(state.outputs);
+                    if (state.mapOutputs) setMapOutputs(state.mapOutputs);
+                    // We could also set nodeStates here if the daemon tracked it more comprehensively,
+                    // but for now we focus on outputs as requested.
+                })
+                .catch(err => console.error("Failed to fetch initial run state:", err));
+        }
 
         ws.onmessage = (msg) => {
             try {
@@ -80,10 +94,30 @@ export function useEventStream(runId: string | null) {
                     setNodeStates(prev => ({ ...prev, [event.nodeId!]: 'running' }));
                 } else if (event.type === 'node:end') {
                     setNodeStates(prev => ({ ...prev, [event.nodeId!]: event.status || 'unknown' }));
+                } else if (event.type === "node:output") {
+                    if (event.mapNodeId && event.iterationId) {
+                        setMapOutputs((prev) => ({
+                            ...prev,
+                            [event.mapNodeId]: {
+                                ...(prev[event.mapNodeId] || {}),
+                                [event.iterationId]: {
+                                    ...(prev[event.mapNodeId]?.[event.iterationId] || {}),
+                                    [event.nodeId!]: event.data,
+                                },
+                            },
+                        }));
+                    } else {
+                        setNodeOutputs((prev) => ({
+                            ...prev,
+                            [event.nodeId!]: event.data,
+                        }));
+                    }
                 } else if (event.type === 'run:start') {
                     setEvents([]); // clear on new run start if same ID?
                     setNodeStates({});
                     setMapStates({});
+                    setNodeOutputs({});
+                    setMapOutputs({});
                 }
 
                 // Handle map:* events
@@ -177,7 +211,9 @@ export function useEventStream(runId: string | null) {
     const clearEvents = useCallback(() => {
         setEvents([]);
         setMapStates({});
+        setNodeOutputs({});
+        setMapOutputs({});
     }, []);
 
-    return { events, nodeStates, mapStates, clearEvents };
+    return { events, nodeStates, mapStates, nodeOutputs, mapOutputs, clearEvents };
 }

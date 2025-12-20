@@ -20,7 +20,9 @@ export class RunManager {
             signal: null,
             state: {
                 signal: null,
-                failedSteps: []
+                failedSteps: [],
+                outputs: {},
+                mapOutputs: {}
             }
         });
         console.log(`Registered run: ${runId}`);

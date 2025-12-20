@@ -22,7 +22,7 @@ export default function App() {
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const { nodeStates, mapStates, events, clearEvents } =
+  const { nodeStates, mapStates, events, nodeOutputs, mapOutputs, clearEvents } =
     useEventStream(currentRunId);
 
   const fetchWorkflows = (isInitial = false) => {
@@ -164,6 +164,8 @@ export default function App() {
                     ? mapStates[selectedNode.id]
                     : undefined
                 }
+                outputs={nodeOutputs}
+                mapOutputs={mapOutputs}
                 onClose={() => setSelectedNode(null)}
               />
             </>

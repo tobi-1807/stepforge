@@ -21,12 +21,14 @@ type NodeData = {
 type Props = {
     node: NodeData | null;
     mapState?: MapState;
+    outputs?: Record<string, any>;
+    mapOutputs?: Record<string, Record<string, Record<string, any>>>;
     onClose: () => void;
 };
 
 type IterationFilter = 'all' | 'failed' | 'recent';
 
-export function NodeDetailsPanel({ node, mapState, onClose }: Props) {
+export function NodeDetailsPanel({ node, mapState, outputs, mapOutputs, onClose }: Props) {
     const [filter, setFilter] = useState<IterationFilter>('all');
 
     if (!node) return null;
@@ -77,6 +79,9 @@ export function NodeDetailsPanel({ node, mapState, onClose }: Props) {
     };
 
     const filteredIterations = isMapNode ? getFilteredIterations() : [];
+
+    // Get output for current node
+    const output = outputs?.[node.id];
 
     // Format duration
     const formatDuration = (ms: number): string => {
@@ -207,7 +212,12 @@ export function NodeDetailsPanel({ node, mapState, onClose }: Props) {
                             ) : (
                                 <div className="space-y-1 max-h-64 overflow-y-auto">
                                     {filteredIterations.map((iter) => (
-                                        <IterationRow key={iter.iterationId} iteration={iter} formatDuration={formatDuration} />
+                                        <IterationRow
+                                            key={iter.iterationId}
+                                            iteration={iter}
+                                            formatDuration={formatDuration}
+                                            outputs={mapOutputs?.[node.id]?.[iter.iterationId]}
+                                        />
                                     ))}
                                 </div>
                             )}
@@ -218,6 +228,18 @@ export function NodeDetailsPanel({ node, mapState, onClose }: Props) {
                 {/* Non-map node content */}
                 {!isMapNode && (
                     <>
+                        {/* Output */}
+                        {output !== undefined && (
+                            <div>
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Output</label>
+                                <div className="mt-1 bg-gray-950 border border-gray-800 rounded-md overflow-hidden">
+                                    <div className="p-2 overflow-auto max-h-60 text-xs font-mono text-blue-300">
+                                        <OutputValue value={output} />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Description */}
                         {node.meta?.description && (
                             <div>
@@ -272,8 +294,29 @@ export function NodeDetailsPanel({ node, mapState, onClose }: Props) {
     );
 }
 
+// Output value renderer with truncation
+function OutputValue({ value }: { value: any }) {
+    const json = JSON.stringify(value, null, 2);
+    const maxLength = 2000;
+    const isTruncated = json.length > maxLength;
+
+    return (
+        <div className="whitespace-pre-wrap">
+            {isTruncated ? `${json.substring(0, maxLength)}... (truncated)` : json}
+        </div>
+    );
+}
+
 // Iteration row component
-function IterationRow({ iteration, formatDuration }: { iteration: IterationSummary; formatDuration: (ms: number) => string }) {
+function IterationRow({
+    iteration,
+    formatDuration,
+    outputs
+}: {
+    iteration: IterationSummary;
+    formatDuration: (ms: number) => string;
+    outputs?: Record<string, any>;
+}) {
     const [expanded, setExpanded] = useState(false);
 
     const statusIcon = {
@@ -292,7 +335,7 @@ function IterationRow({ iteration, formatDuration }: { iteration: IterationSumma
         <div className={`rounded p-2 ${statusBg[iteration.status]}`}>
             <div
                 className="flex items-center gap-2 cursor-pointer"
-                onClick={() => iteration.status === 'failed' && setExpanded(!expanded)}
+                onClick={() => setExpanded(!expanded)}
             >
                 {statusIcon[iteration.status]}
                 <span className="text-xs text-white font-mono">
@@ -312,6 +355,22 @@ function IterationRow({ iteration, formatDuration }: { iteration: IterationSumma
                             {iteration.error.message}
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Iteration Outputs (Always show if available when expanded, or show if expanded and failed) */}
+            {expanded && outputs && Object.keys(outputs).length > 0 && (
+                <div className="mt-2 space-y-2">
+                    {Object.entries(outputs).map(([templateNodeId, val]) => (
+                        <div key={templateNodeId} className="bg-gray-900/50 rounded border border-gray-700/50 p-2">
+                            <div className="text-[10px] text-gray-500 uppercase font-semibold mb-1">
+                                Output
+                            </div>
+                            <div className="text-xs font-mono text-blue-300 overflow-x-auto">
+                                <OutputValue value={val} />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
         </div>

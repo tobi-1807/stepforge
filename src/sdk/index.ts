@@ -305,6 +305,8 @@ export async function executeWorkflow(
   let isPaused = false;
   const runState = new Map<string, unknown>();
   const failedSteps: Array<{ nodeId: string; error: string }> = [];
+  const outputs: Record<string, any> = {};
+  const mapOutputs: Record<string, Record<string, Record<string, any>>> = {};
 
   // Iteration-scoped stores (keyed by iterationId)
   const iterationStores = new Map<string, Map<string, unknown>>();
@@ -352,6 +354,8 @@ export async function executeWorkflow(
       signal: getControlSignal?.() || null,
       pausedAt,
       failedSteps,
+      outputs,
+      mapOutputs,
     };
     onControlStateChange?.(state);
     onEvent({ type: "run:control_state", runId, state });
@@ -539,8 +543,17 @@ export async function executeWorkflow(
             onEvent({ type: "node:progress", nodeId, nodeTitle, data: p }),
           artifact: (a) =>
             onEvent({ type: "node:artifact", nodeId, nodeTitle, data: a }),
-          output: (o) =>
-            onEvent({ type: "node:output", nodeId, nodeTitle, data: o }),
+          output: (o) => {
+            outputs[nodeId] = o;
+            onEvent({
+              type: "node:output",
+              nodeId,
+              nodeTitle,
+              runId,
+              data: o,
+              at: new Date().toISOString(),
+            });
+          },
           isCancelled: () => isCancelled,
           throwIfCancelled: () => {
             if (isCancelled) throw new Error("Cancelled");
@@ -808,13 +821,23 @@ export async function executeWorkflow(
                     nodeTitle: templateStep.title,
                     data: a,
                   }),
-                output: (o) =>
+                output: (o) => {
+                  if (!mapOutputs[mapNodeId]) mapOutputs[mapNodeId] = {};
+                  if (!mapOutputs[mapNodeId][iterationId])
+                    mapOutputs[mapNodeId][iterationId] = {};
+                  mapOutputs[mapNodeId][iterationId][templateStep.nodeId] = o;
+
                   onEvent({
                     type: "node:output",
                     nodeId: templateStep.nodeId,
                     nodeTitle: templateStep.title,
+                    runId,
+                    mapNodeId,
+                    iterationId,
                     data: o,
-                  }),
+                    at: new Date().toISOString(),
+                  });
+                },
                 isCancelled: () => isCancelled,
                 throwIfCancelled: () => {
                   if (isCancelled) throw new Error("Cancelled");
