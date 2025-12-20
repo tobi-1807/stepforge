@@ -61,7 +61,59 @@ app.use((req, res, next) => {
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+
+// WebSocket server setup (noServer: true allows us to handle the upgrade manually for better robustness)
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request: http.IncomingMessage, socket: any, head: Buffer) => {
+    const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`);
+
+    if (url.pathname === '/ws' || url.pathname === '/ws/') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+            wss.emit('connection', ws, request);
+        });
+    } else if (isDev && url.pathname === '/vite-hmr') {
+        // Proxy Vite HMR WebSocket
+        const portFile = path.resolve(cwd, '.vite-port');
+        let vitePort = 5173;
+        if (fs.existsSync(portFile)) {
+            try {
+                const savedPort = parseInt(fs.readFileSync(portFile, 'utf-8').trim(), 10);
+                if (!isNaN(savedPort)) vitePort = savedPort;
+            } catch (e) { }
+        }
+        if (process.env.VITE_PORT) vitePort = parseInt(process.env.VITE_PORT, 10);
+
+        const proxyReq = http.request({
+            host: 'localhost',
+            port: vitePort,
+            path: request.url,
+            method: 'GET',
+            headers: {
+                'Connection': 'Upgrade',
+                'Upgrade': 'websocket',
+                ...request.headers
+            }
+        });
+
+        proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+            socket.write('HTTP/1.1 101 Switching Protocols\r\n' +
+                Object.keys(proxyRes.headers).map(h => `${h}: ${proxyRes.headers[h]}\r\n`).join('') +
+                '\r\n');
+
+            proxySocket.pipe(socket).pipe(proxySocket);
+        });
+
+        proxyReq.on('error', () => {
+            socket.destroy();
+        });
+
+        proxyReq.end();
+    } else {
+        // Destroy sockets for other paths to avoid hanging
+        socket.destroy();
+    }
+});
 
 // Resolve relative to where the command was run (INIT_CWD), not the package dir
 const cwd = process.env.INIT_CWD || process.cwd();
@@ -218,6 +270,56 @@ if (!fs.existsSync(uiDist)) {
 }
 
 const uiAvailable = fs.existsSync(uiDist);
+const isDev = process.env.STEPFORGE_ENV === 'development' || !__dirname.includes('dist');
+
+if (isDev) {
+    const portFile = path.resolve(cwd, '.vite-port');
+
+    // In dev mode, we proxy non-API requests to Vite
+    app.use((req, res, next) => {
+        if (req.path.startsWith('/api') || req.path === '/ws') {
+            return next();
+        }
+
+        // Determine port on each request in dev mode to handle Vite restarts/port shifts
+        let vitePort = 5173;
+        if (fs.existsSync(portFile)) {
+            try {
+                const savedPort = parseInt(fs.readFileSync(portFile, 'utf-8').trim(), 10);
+                if (!isNaN(savedPort)) vitePort = savedPort;
+            } catch (e) {
+                // Ignore errors
+            }
+        }
+        if (process.env.VITE_PORT) {
+            vitePort = parseInt(process.env.VITE_PORT, 10);
+        }
+
+        // Simple proxy to Vite
+        const proxyReq = http.request({
+            host: 'localhost',
+            port: vitePort,
+            path: req.url,
+            method: req.method,
+            headers: req.headers
+        }, (proxyRes) => {
+            if (proxyRes.statusCode === 404) {
+                // If Vite returns 404, maybe it's not the UI or Vite is down
+                return next();
+            }
+            res.writeHead(proxyRes.statusCode!, proxyRes.headers);
+            proxyRes.pipe(res);
+        });
+
+        proxyReq.on('error', () => {
+            // Fallback to static if Vite is not running
+            next();
+        });
+
+        req.pipe(proxyReq);
+    });
+}
+
 if (uiAvailable) {
     app.use(express.static(uiDist));
 
@@ -263,6 +365,14 @@ startServer(requestedPort, !portExplicit)
         console.log(`\n  Stepforge is running!\n`);
         console.log(`  → Local:     http://localhost:${actualPort}`);
         console.log(`  → Workspace: ${WORKSPACE_ROOT}\n`);
+
+        // Write daemon port to file for Vite proxy
+        const daemonPortFile = path.resolve(cwd, '.daemon-port');
+        try {
+            fs.writeFileSync(daemonPortFile, actualPort.toString());
+        } catch (e) {
+            console.warn(`  ⚠ Failed to write .daemon-port file: ${e}`);
+        }
 
         if (!uiAvailable) {
             console.warn("  ⚠ UI assets not found. Running in API-only mode.");

@@ -29,3 +29,5 @@ yarn-error.log*
 
 # Package Manager Cache
 .pnpm-store
+.vite-port
+.daemon-port
