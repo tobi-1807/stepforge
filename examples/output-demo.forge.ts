@@ -26,13 +26,13 @@ export default workflow(
                 items: (ctx) => Array.from({ length: ctx.inputs.count }, (_, i) => i + 1),
                 key: (item) => `item-${item}`
             },
-            (item, index, loop) => {
+            (loop) => {
                 loop.step("Process Item", async (ctx) => {
                     await ctx.sleep(500);
                     ctx.output({
                         processedItem: ctx.loop.item,
                         index: ctx.loop.index,
-                        cube: (ctx.loop.item as number) ** 3
+                        cube: ctx.loop.item ** 3
                     });
                 });
             }

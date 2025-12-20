@@ -196,7 +196,7 @@ export function buildGraph(
       map<T>(
         title: string,
         opts: MapOptions<T>,
-        buildTemplate: (item: T, index: number, loop: LoopBuilder) => void
+        buildTemplate: (loop: LoopBuilder<any, T>) => void
       ) {
         const logicalPath = parentPath ? `${parentPath}/${title}` : title;
         const mapNodeId = generateNodeId(version, logicalPath);
@@ -229,8 +229,12 @@ export function buildGraph(
         // The template step titles must be static (not dependent on item)
         let lastTemplateNodeId: string | null = null;
 
-        const loopBuilder: LoopBuilder = {
-          step(stepTitle: string, _fn: IterationStepFn, stepOptions?: StepNodeOptions) {
+        const loopBuilder: LoopBuilder<any, any> = {
+          step(
+            stepTitle: string,
+            _fn: IterationStepFn<any, any>,
+            stepOptions?: StepNodeOptions
+          ) {
             const templateLogicalPath = `${logicalPath}/${stepTitle}`;
             const templateNodeId = generateNodeId(version, templateLogicalPath);
 
@@ -255,9 +259,8 @@ export function buildGraph(
           },
         };
 
-        // Call buildTemplate with dummy item to discover template structure
-        // NOTE: Template step titles must be static - don't use item/index in titles
-        buildTemplate(undefined as T, 0, loopBuilder);
+        // Call buildTemplate to discover template structure
+        buildTemplate(loopBuilder);
 
         lastNodeInScope = mapNodeId;
       },
@@ -483,9 +486,7 @@ export async function executeWorkflow(
       buildFn?: (b: WorkflowBuilder) => void;
       mapOpts?: MapOptions<any>;
       mapBuildTemplate?: (
-        item: any,
-        index: number,
-        loop: LoopBuilder
+        loop: LoopBuilder<any, any>
       ) => void;
       options?: any;
     }> = [];
@@ -500,7 +501,7 @@ export async function executeWorkflow(
       map<T>(
         title: string,
         opts: MapOptions<T>,
-        buildTemplate: (item: T, index: number, loop: LoopBuilder) => void
+        buildTemplate: (loop: LoopBuilder<any, T>) => void
       ) {
         items.push({
           type: "map",
@@ -646,15 +647,15 @@ export async function executeWorkflow(
         // Collect template steps by calling buildTemplate in "template mode"
         const templateSteps: Array<{
           title: string;
-          fn: IterationStepFn;
+          fn: IterationStepFn<any, any>;
           options?: StepNodeOptions;
           nodeId: string;
         }> = [];
 
-        const loopBuilder: LoopBuilder = {
+        const loopBuilder: LoopBuilder<any, any> = {
           step(
             stepTitle: string,
-            fn: IterationStepFn,
+            fn: IterationStepFn<any, any>,
             stepOptions?: StepNodeOptions
           ) {
             const templateLogicalPath = `${logicalPath}/${stepTitle}`;
@@ -668,8 +669,8 @@ export async function executeWorkflow(
           },
         };
 
-        // Discover template structure (with dummy item)
-        buildTemplate(undefined as any, 0, loopBuilder);
+        // Discover template structure
+        buildTemplate(loopBuilder);
 
         let mapError: Error | null = null;
         let mapStatus: "success" | "failed" | "canceled" = "success";

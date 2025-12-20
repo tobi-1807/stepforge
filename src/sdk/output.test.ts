@@ -33,7 +33,7 @@ describe("ctx.output", () => {
             wf.map(
                 "Map 1",
                 { items: () => [1] },
-                (item, index, loop) => {
+                (loop) => {
                     loop.step("Process", async (ctx) => {
                         ctx.output({ item: ctx.loop.item });
                     });

@@ -82,17 +82,17 @@ export type MapItemsContext<TInputs = AnyInputs> = {
 };
 
 /** Loop context available on StepContext when executing inside a map */
-export type LoopContext = {
+export type LoopContext<TItem = unknown> = {
   mapNodeId: string;
   iterationId: string;
   index: number;
   key?: string;
-  item?: unknown;
+  item: TItem;
 };
 
 /** Builder passed to the map's build function for defining template steps */
-export type LoopBuilder<TInputs = AnyInputs> = {
-  step(title: string, fn: IterationStepFn<TInputs>, options?: StepNodeOptions): void;
+export type LoopBuilder<TInputs = AnyInputs, TItem = unknown> = {
+  step(title: string, fn: IterationStepFn<TInputs, TItem>, options?: StepNodeOptions): void;
   // group() can be added later if needed
 };
 
@@ -141,7 +141,7 @@ export type StepContext<TInputs = AnyInputs> = {
    * Present when executing inside a map iteration.
    * @deprecated Use `IterationStepContext` for guaranteed access inside map templates.
    */
-  loop?: LoopContext;
+  loop?: LoopContext<unknown>;
 
   /**
    * Iteration-scoped scratch store.
@@ -151,14 +151,17 @@ export type StepContext<TInputs = AnyInputs> = {
 };
 
 /** Context provided to steps defined inside a map template. Guaranteed LoopContext and RunStore. */
-export type IterationStepContext<TInputs = AnyInputs> = StepContext<TInputs> & {
-  loop: LoopContext;
+export type IterationStepContext<TInputs = AnyInputs, TItem = unknown> = Omit<
+  StepContext<TInputs>,
+  "loop" | "iteration"
+> & {
+  loop: LoopContext<TItem>;
   iteration: RunStore;
 };
 
 /** Function signature for steps defined inside a map template. */
-export type IterationStepFn<TInputs = AnyInputs> = (
-  ctx: IterationStepContext<TInputs>
+export type IterationStepFn<TInputs = AnyInputs, TItem = unknown> = (
+  ctx: IterationStepContext<TInputs, TItem>
 ) => Promise<void>;
 
 export type WorkflowBuilder<TInputs = AnyInputs> = {
@@ -175,14 +178,13 @@ export type WorkflowBuilder<TInputs = AnyInputs> = {
    * @param title - Static title for the map node (do not interpolate item values)
    * @param opts - Map options including items() function and optional key()
    * @param build - Function that defines template steps.
-   *                IMPORTANT: Do not use the `item` or `index` parameters inside
-   *                the `loop.step()` callbacks as they are captured during discovery.
-   *                Use `ctx.loop.item` and `ctx.loop.index` instead for runtime values.
+   *                IMPORTANT: Use `ctx.loop.item` and `ctx.loop.index` inside 
+   *                the `loop.step()` callbacks for runtime values.
    */
   map<T>(
     title: string,
     opts: MapOptions<T, TInputs>,
-    build: (item: T, index: number, loop: LoopBuilder<TInputs>) => void
+    build: (loop: LoopBuilder<TInputs, T>) => void
   ): void;
   // Internal use only - for recursing
   _getInternalState?(): any;

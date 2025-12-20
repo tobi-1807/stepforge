@@ -46,13 +46,13 @@ export default workflow(
         key: (item) => item.id,
         onError: "fail-fast",
       },
-      (item, index, loop) => {
+      (loop) => {
         // Template step 1: Validate item
         loop.step("Validate", async (ctx) => {
           ctx.log.info(`Validating ${ctx.loop.key}...`);
           await ctx.sleep(200); // Simulate work
 
-          const currentItem = ctx.loop.item as { id: string; value: number };
+          const currentItem = ctx.loop.item;
 
           // Simulate occasional validation failures
           if (currentItem && currentItem.value < 10) {
