@@ -6,7 +6,9 @@ import {
   Background,
   Controls,
   MiniMap,
+  useReactFlow,
 } from "@xyflow/react";
+
 import "@xyflow/react/dist/style.css";
 import { StatusNode } from "./StatusNode";
 import { MapContainerNode } from "./MapContainerNode";
@@ -39,6 +41,8 @@ export function GraphViewer({
 }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
+  const { fitView } = useReactFlow();
+
 
   const nodeTypes = useMemo(
     () => ({
@@ -56,9 +60,13 @@ export function GraphViewer({
       ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
         setNodes(layoutedNodes);
         setEdges(layoutedEdges);
+        // Zoom to fit the new graph after layout
+        window.requestAnimationFrame(() => {
+          fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+        });
       }
     );
-  }, [graph, setNodes, setEdges]);
+  }, [graph, setNodes, setEdges, fitView]);
 
   // Update node status based on state (existing logic + map enhancements)
   useEffect(() => {
@@ -148,8 +156,9 @@ export function GraphViewer({
         onEdgesChange={onEdgesChange}
         onNodeClick={(_, node) => onNodeClick?.(node.id)}
         nodeTypes={nodeTypes}
-        fitView
+        fitView={false}
         proOptions={{
+
           hideAttribution: true,
         }}
       >

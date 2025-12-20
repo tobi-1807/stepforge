@@ -6,6 +6,8 @@ import { NodeDetailsPanel } from "./components/NodeDetailsPanel";
 import { ExecutionControlPanel } from "./components/ExecutionControlPanel";
 import { useEventStream } from "./hooks/useEventStream";
 import { Play, Trash2, Layers, FileCode2, RefreshCw } from "lucide-react";
+import { ReactFlowProvider } from "@xyflow/react";
+
 
 type Workflow = {
   id: string;
@@ -151,13 +153,16 @@ export default function App() {
         <div className="flex-1 relative">
           {graph ? (
             <>
-              <GraphViewer
-                graph={graph}
-                nodeStates={nodeStates}
-                nodeAttempts={nodeAttempts}
-                mapStates={mapStates}
-                onNodeClick={handleNodeClick}
-              />
+              <ReactFlowProvider>
+                <GraphViewer
+                  graph={graph}
+                  nodeStates={nodeStates}
+                  nodeAttempts={nodeAttempts}
+                  mapStates={mapStates}
+                  onNodeClick={handleNodeClick}
+                />
+              </ReactFlowProvider>
+
               <NodeDetailsPanel
                 node={selectedNode}
                 mapState={
