@@ -136,25 +136,10 @@ export type StepContext<TInputs = AnyInputs> = {
   waitIfPaused(): Promise<void>;
   sleep(ms: number): Promise<void>;
   run: RunStore;
-
-  /**
-   * Present when executing inside a map iteration.
-   * @deprecated Use `IterationStepContext` for guaranteed access inside map templates.
-   */
-  loop?: LoopContext<unknown>;
-
-  /**
-   * Iteration-scoped scratch store.
-   * @deprecated Use `IterationStepContext` for guaranteed access inside map templates.
-   */
-  iteration?: RunStore;
 };
 
 /** Context provided to steps defined inside a map template. Guaranteed LoopContext and RunStore. */
-export type IterationStepContext<TInputs = AnyInputs, TItem = unknown> = Omit<
-  StepContext<TInputs>,
-  "loop" | "iteration"
-> & {
+export type IterationStepContext<TInputs = AnyInputs, TItem = unknown> = StepContext<TInputs> & {
   loop: LoopContext<TItem>;
   iteration: RunStore;
 };

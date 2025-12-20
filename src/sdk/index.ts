@@ -30,34 +30,6 @@ export function inputs<const T extends readonly InputParameter[]>(defs: T): T {
   return defs;
 }
 
-/**
- * Define a workflow with strongly-typed inputs.
- *
- * Use `inputs([...])` to enable automatic type inference for `ctx.inputs`.
- *
- * @deprecated Use `workflow()` instead for a simpler API.
- *
- * @example
- * ```ts
- * export default defineWorkflow({
- *   name: "My Workflow",
- *   inputs: inputs([
- *     { name: "count", type: "number", label: "Count", default: 5 },
- *   ]),
- *   build: (wf) => {
- *     wf.step("Process", async (ctx) => {
- *       // ctx.inputs.count is inferred as `number`
- *       const count = ctx.inputs.count;
- *     });
- *   },
- * });
- * ```
- */
-export function defineWorkflow<
-  const TInputsDef extends readonly InputParameter[]
->(def: WorkflowDefinition<TInputsDef>): WorkflowDefinition<TInputsDef> {
-  return def;
-}
 
 /**
  * Define a workflow with minimal ceremony.
