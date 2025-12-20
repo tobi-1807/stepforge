@@ -1,8 +1,8 @@
-import { workflow } from "../src/sdk/index.js";
+import { workflow, inputs } from "../src/sdk/index.js";
 
 export default workflow(
   "AWS Deployment Pipeline",
-  [
+  inputs([
     {
       name: "environment",
       type: "string",
@@ -35,7 +35,7 @@ export default workflow(
       required: false,
       default: true,
     },
-  ] as const,
+  ]),
   (wf) => {
     wf.step(
       "Validate Configuration",

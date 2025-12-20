@@ -31,7 +31,7 @@ Stepforge consists of three parts, shipped as a single package:
 Developers write workflows in `.forge.ts` files using a small SDK:
 
 ```ts
-import { workflow } from "stepforge";
+import { workflow, inputs } from "stepforge";
 
 export default workflow("Example", (wf) => {
   wf.step("First step", async (ctx) => { ... });
@@ -44,7 +44,7 @@ Need typed inputs? Pass an array as the second argument:
 ```ts
 export default workflow(
   "Example",
-  [{ name: "count", type: "number", label: "Count", default: 5 }] as const,
+  inputs([{ name: "count", type: "number", label: "Count", default: 5 }]),
   (wf) => {
     wf.step("Process", async (ctx) => {
       ctx.log.info(`Count: ${ctx.inputs.count}`);

@@ -1,7 +1,7 @@
 /**
  * Example workflow template for new users.
  */
-export const exampleWorkflowTemplate = `import { workflow } from "stepforge";
+export const exampleWorkflowTemplate = `import { workflow, inputs } from "stepforge";
 
 /**
  * My First Workflow
@@ -11,7 +11,7 @@ export const exampleWorkflowTemplate = `import { workflow } from "stepforge";
  */
 export default workflow(
   "Hello World",
-  [
+  inputs([
     {
       name: "greeting",
       type: "string",
@@ -19,7 +19,7 @@ export default workflow(
       description: "What should we say?",
       default: "Hello from Stepforge!",
     },
-  ] as const,
+  ]),
   (wf) => {
     wf.step("Say hello", async (ctx) => {
       const message = ctx.inputs.greeting;

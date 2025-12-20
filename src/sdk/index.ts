@@ -16,9 +16,24 @@ import {
 export * from "./types.js";
 
 /**
+ * Helper to define workflow inputs with automatic literal type inference.
+ * Replaces the need for `as const`.
+ *
+ * @example
+ * ```ts
+ * inputs([
+ *   { name: "count", type: "number", label: "Count", default: 5 }
+ * ])
+ * ```
+ */
+export function inputs<const T extends readonly InputParameter[]>(defs: T): T {
+  return defs;
+}
+
+/**
  * Define a workflow with strongly-typed inputs.
  *
- * Use `inputs: [...] as const` to enable automatic type inference for `ctx.inputs`.
+ * Use `inputs([...])` to enable automatic type inference for `ctx.inputs`.
  *
  * @deprecated Use `workflow()` instead for a simpler API.
  *
@@ -26,12 +41,12 @@ export * from "./types.js";
  * ```ts
  * export default defineWorkflow({
  *   name: "My Workflow",
- *   inputs: [
+ *   inputs: inputs([
  *     { name: "count", type: "number", label: "Count", default: 5 },
- *   ] as const,
+ *   ]),
  *   build: (wf) => {
  *     wf.step("Process", async (ctx) => {
- *       // ctx.inputs.count is inferred as `number` (no cast needed)
+ *       // ctx.inputs.count is inferred as `number`
  *       const count = ctx.inputs.count;
  *     });
  *   },
@@ -49,7 +64,7 @@ export function defineWorkflow<
  *
  * Overloads:
  * - `workflow(name, build)` – no inputs, `ctx.inputs` is `{}`
- * - `workflow(name, inputs, build)` – typed inputs via `as const`
+ * - `workflow(name, inputs([...]), build)` – typed inputs via `inputs()` helper
  *
  * @example
  * ```ts
@@ -60,10 +75,12 @@ export function defineWorkflow<
  *   });
  * });
  *
- * // Workflow with typed inputs
+ * // Workflow with typed inputs via helper (preferred)
  * export default workflow(
  *   "Counter",
- *   [{ name: "count", type: "number", label: "Count", default: 5 }] as const,
+ *   inputs([
+ *     { name: "count", type: "number", label: "Count", default: 5 }
+ *   ]),
  *   (wf) => {
  *     wf.step("Process", async (ctx) => {
  *       ctx.log.info(`Count is ${ctx.inputs.count}`);

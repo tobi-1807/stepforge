@@ -1,4 +1,4 @@
-import { workflow } from "../src/sdk/index.js";
+import { workflow, inputs } from "../src/sdk/index.js";
 
 /**
  * Example workflow demonstrating wf.map() - the map/loop construct.
@@ -13,7 +13,7 @@ import { workflow } from "../src/sdk/index.js";
  */
 export default workflow(
   "Map Example - Process Items",
-  [
+  inputs([
     {
       name: "itemCount",
       type: "number",
@@ -21,7 +21,7 @@ export default workflow(
       description: "How many items should be generated and processed",
       default: 5,
     },
-  ] as const,
+  ]),
   (wf) => {
     // Step 1: Generate items to process
     wf.step("Generate items", async (ctx) => {
