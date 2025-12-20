@@ -50,7 +50,7 @@ export default workflow(
         ctx.log.info(`Instance count: ${count}`);
         ctx.log.info(`Monitoring enabled: ${monitoring}`);
 
-        await new Promise((r) => setTimeout(r, 1000));
+        await ctx.sleep(1000);
       },
       {
         description: "Validates deployment configuration and parameters",
@@ -67,7 +67,7 @@ export default workflow(
           async (ctx) => {
             const region = ctx.inputs.region;
             ctx.log.info(`Creating VPC in ${region}...`);
-            await new Promise((r) => setTimeout(r, 1500));
+            await ctx.sleep(1500);
             ctx.log.info("VPC created successfully");
           },
           {
@@ -81,7 +81,7 @@ export default workflow(
           "Configure Security Groups",
           async (ctx) => {
             ctx.log.info("Setting up security groups...");
-            await new Promise((r) => setTimeout(r, 1000));
+            await ctx.sleep(1000);
             ctx.log.info("Security groups configured");
           },
           {
@@ -104,7 +104,7 @@ export default workflow(
         const env = ctx.inputs.environment;
 
         ctx.log.info(`Deploying ${count} instances to ${env}...`);
-        await new Promise((r) => setTimeout(r, 2000));
+        await ctx.sleep(2000);
         ctx.progress({ deployed: count, total: count });
         ctx.log.info("Application deployed successfully");
       },
@@ -122,7 +122,7 @@ export default workflow(
 
         if (monitoring) {
           ctx.log.info("Configuring CloudWatch dashboards...");
-          await new Promise((r) => setTimeout(r, 1500));
+          await ctx.sleep(1500);
           ctx.log.info("Monitoring configured");
         } else {
           ctx.log.warn("Monitoring disabled, skipping setup");
@@ -139,7 +139,7 @@ export default workflow(
       "Run Health Checks",
       async (ctx) => {
         ctx.log.info("Running health checks...");
-        await new Promise((r) => setTimeout(r, 2000));
+        await ctx.sleep(2000);
         ctx.log.info("All health checks passed ✓");
       },
       {

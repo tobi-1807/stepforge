@@ -22,7 +22,7 @@
     "build": "npm run build:backend && npm run build:ui",
     "build:backend": "rm -rf dist && tsc && chmod +x dist/daemon/server.js",
     "build:ui": "vite build ui",
-    "test": "vitest"
+    "test": "vitest run"
   },
   "dependencies": {
     "chokidar": "^5.0.0",

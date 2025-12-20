@@ -50,7 +50,7 @@ export default workflow(
         // Template step 1: Validate item
         loop.step("Validate", async (ctx) => {
           ctx.log.info(`Validating ${ctx.loop.key}...`);
-          await new Promise((r) => setTimeout(r, 200)); // Simulate work
+          await ctx.sleep(200); // Simulate work
 
           const currentItem = ctx.loop.item as { id: string; value: number };
 
@@ -74,7 +74,7 @@ export default workflow(
         // Template step 2: Process item
         loop.step("Process", async (ctx) => {
           ctx.log.info(`Processing ${ctx.loop.key}...`);
-          await new Promise((r) => setTimeout(r, 300)); // Simulate work
+          await ctx.sleep(300); // Simulate work
 
           // Retrieve computed value from iteration store (no need to re-derive)
           const doubledValue = ctx.iteration.require<number>("doubledValue");
@@ -86,7 +86,7 @@ export default workflow(
         // Template step 3: Save result
         loop.step("Save result", async (ctx) => {
           ctx.log.info(`Saving result for ${ctx.loop.key}...`);
-          await new Promise((r) => setTimeout(r, 2000)); // Simulate work
+          await ctx.sleep(2000); // Simulate work
           ctx.log.info(`${ctx.loop.key} saved`);
         });
       }

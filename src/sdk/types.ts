@@ -132,6 +132,7 @@ export type StepContext<TInputs = AnyInputs> = {
   throwIfCancelled(): void;
   isPaused(): boolean;
   waitIfPaused(): Promise<void>;
+  sleep(ms: number): Promise<void>;
   run: RunStore;
 
   /**

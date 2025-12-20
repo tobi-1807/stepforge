@@ -396,6 +396,24 @@ export async function executeWorkflow(
     }
   };
 
+  // Helper for ctx.sleep
+  const sleepHelper = async (ms: number, nodeId: string) => {
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+      if (isCancelled) throw new Error("Cancelled");
+      await waitIfPausedHelper(nodeId);
+      if (isCancelled) throw new Error("Cancelled");
+
+      const remaining = ms - (Date.now() - start);
+      if (remaining <= 0) break;
+
+      // Check every 100ms or remaining time
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(100, remaining))
+      );
+    }
+  };
+
   // Helper to create a run store interface
   const createRunStore = (): import("./types.js").RunStore => ({
     get: (key) => runState.get(key) as any,
@@ -529,6 +547,7 @@ export async function executeWorkflow(
           },
           isPaused: () => isPaused,
           waitIfPaused: async () => await waitIfPausedHelper(nodeId),
+          sleep: async (ms) => await sleepHelper(ms, nodeId),
           run: createRunStore(),
         };
 
@@ -803,7 +822,8 @@ export async function executeWorkflow(
                 isPaused: () => isPaused,
                 waitIfPaused: async () =>
                   await waitIfPausedHelper(templateStep.nodeId),
-                run: createRunStore(),
+                sleep: async (ms) => await sleepHelper(ms, templateStep.nodeId),
+                run: createIterationStore(iterationId),
                 loop: {
                   mapNodeId,
                   iterationId,
