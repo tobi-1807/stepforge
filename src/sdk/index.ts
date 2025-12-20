@@ -5,9 +5,11 @@ import {
   GraphNode,
   GraphEdge,
   StepFn,
+  IterationStepFn,
   MapOptions,
   LoopBuilder,
   StepNodeOptions,
+  IterationStepContext,
   InputParameter,
   InferInputs,
 } from "./types.js";
@@ -211,7 +213,7 @@ export function buildGraph(
         let lastTemplateNodeId: string | null = null;
 
         const loopBuilder: LoopBuilder = {
-          step(stepTitle: string, _fn: StepFn, stepOptions?: StepNodeOptions) {
+          step(stepTitle: string, _fn: IterationStepFn, stepOptions?: StepNodeOptions) {
             const templateLogicalPath = `${logicalPath}/${stepTitle}`;
             const templateNodeId = generateNodeId(version, templateLogicalPath);
 
@@ -441,7 +443,11 @@ export async function executeWorkflow(
       fn?: StepFn;
       buildFn?: (b: WorkflowBuilder) => void;
       mapOpts?: MapOptions<any>;
-      mapBuildTemplate?: (item: any, index: number, loop: LoopBuilder) => void;
+      mapBuildTemplate?: (
+        item: any,
+        index: number,
+        loop: LoopBuilder
+      ) => void;
       options?: any;
     }> = [];
 
@@ -591,13 +597,17 @@ export async function executeWorkflow(
         // Collect template steps by calling buildTemplate in "template mode"
         const templateSteps: Array<{
           title: string;
-          fn: StepFn;
+          fn: IterationStepFn;
           options?: StepNodeOptions;
           nodeId: string;
         }> = [];
 
         const loopBuilder: LoopBuilder = {
-          step(stepTitle: string, fn: StepFn, stepOptions?: StepNodeOptions) {
+          step(
+            stepTitle: string,
+            fn: IterationStepFn,
+            stepOptions?: StepNodeOptions
+          ) {
             const templateLogicalPath = `${logicalPath}/${stepTitle}`;
             const templateNodeId = generateNodeId(version, templateLogicalPath);
             templateSteps.push({
@@ -740,7 +750,7 @@ export async function executeWorkflow(
               });
 
               // Create step context with loop info and iteration store
-              const stepCtx: import("./types.js").StepContext = {
+              const stepCtx: IterationStepContext = {
                 nodeId: templateStep.nodeId,
                 runId,
                 inputs,
@@ -847,8 +857,8 @@ export async function executeWorkflow(
               status: iterationFailed
                 ? "failed"
                 : isCancelled
-                ? "skipped"
-                : "success",
+                  ? "skipped"
+                  : "success",
               durationMs: Date.now() - itemStartTime,
               error: iterationError,
             });

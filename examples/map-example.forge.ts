@@ -49,45 +49,45 @@ export default workflow(
       (item, index, loop) => {
         // Template step 1: Validate item
         loop.step("Validate", async (ctx) => {
-          ctx.log.info(`Validating ${ctx.loop?.key}...`);
+          ctx.log.info(`Validating ${ctx.loop.key}...`);
           await new Promise((r) => setTimeout(r, 200)); // Simulate work
 
-          const currentItem = ctx.loop?.item as { id: string; value: number };
+          const currentItem = ctx.loop.item as { id: string; value: number };
 
           // Simulate occasional validation failures
           if (currentItem && currentItem.value < 10) {
             throw new Error(
-              `Item ${ctx.loop?.key} has value too low: ${currentItem.value}`
+              `Item ${ctx.loop.key} has value too low: ${currentItem.value}`
             );
           }
 
           // Store computed value in iteration-scoped scratch space
           // This avoids polluting global ctx.run with per-iteration noise
           const doubledValue = currentItem.value * 2;
-          ctx.iteration?.set("doubledValue", doubledValue);
+          ctx.iteration.set("doubledValue", doubledValue);
 
           ctx.log.info(
-            `${ctx.loop?.key} validated successfully, doubled: ${doubledValue}`
+            `${ctx.loop.key} validated successfully, doubled: ${doubledValue}`
           );
         });
 
         // Template step 2: Process item
         loop.step("Process", async (ctx) => {
-          ctx.log.info(`Processing ${ctx.loop?.key}...`);
+          ctx.log.info(`Processing ${ctx.loop.key}...`);
           await new Promise((r) => setTimeout(r, 300)); // Simulate work
 
           // Retrieve computed value from iteration store (no need to re-derive)
-          const doubledValue = ctx.iteration?.require<number>("doubledValue");
+          const doubledValue = ctx.iteration.require<number>("doubledValue");
           ctx.log.info(
-            `${ctx.loop?.key} processed with pre-computed value: ${doubledValue}`
+            `${ctx.loop.key} processed with pre-computed value: ${doubledValue}`
           );
         });
 
         // Template step 3: Save result
         loop.step("Save result", async (ctx) => {
-          ctx.log.info(`Saving result for ${ctx.loop?.key}...`);
+          ctx.log.info(`Saving result for ${ctx.loop.key}...`);
           await new Promise((r) => setTimeout(r, 2000)); // Simulate work
-          ctx.log.info(`${ctx.loop?.key} saved`);
+          ctx.log.info(`${ctx.loop.key} saved`);
         });
       }
     );

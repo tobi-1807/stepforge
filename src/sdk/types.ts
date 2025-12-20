@@ -20,10 +20,10 @@ type InputTypeMap = {
 /** Extract InputParameters that are required (required: true OR has default) */
 type RequiredInputParam<T extends InputParameter> =
   T extends { required: true }
-    ? T
-    : T extends { default: infer _D }
-    ? T
-    : never;
+  ? T
+  : T extends { default: infer _D }
+  ? T
+  : never;
 
 /** Extract InputParameters that are optional */
 type OptionalInputParam<T extends InputParameter> = T extends RequiredInputParam<T>
@@ -90,7 +90,7 @@ export type LoopContext = {
 
 /** Builder passed to the map's build function for defining template steps */
 export type LoopBuilder<TInputs = AnyInputs> = {
-  step(title: string, fn: StepFn<TInputs>, options?: StepNodeOptions): void;
+  step(title: string, fn: IterationStepFn<TInputs>, options?: StepNodeOptions): void;
   // group() can be added later if needed
 };
 
@@ -133,11 +133,30 @@ export type StepContext<TInputs = AnyInputs> = {
   isPaused(): boolean;
   waitIfPaused(): Promise<void>;
   run: RunStore;
-  /** Present when executing inside a map iteration */
+
+  /**
+   * Present when executing inside a map iteration.
+   * @deprecated Use `IterationStepContext` for guaranteed access inside map templates.
+   */
   loop?: LoopContext;
-  /** Iteration-scoped scratch store (present only inside map template steps) */
+
+  /**
+   * Iteration-scoped scratch store.
+   * @deprecated Use `IterationStepContext` for guaranteed access inside map templates.
+   */
   iteration?: RunStore;
 };
+
+/** Context provided to steps defined inside a map template. Guaranteed LoopContext and RunStore. */
+export type IterationStepContext<TInputs = AnyInputs> = StepContext<TInputs> & {
+  loop: LoopContext;
+  iteration: RunStore;
+};
+
+/** Function signature for steps defined inside a map template. */
+export type IterationStepFn<TInputs = AnyInputs> = (
+  ctx: IterationStepContext<TInputs>
+) => Promise<void>;
 
 export type WorkflowBuilder<TInputs = AnyInputs> = {
   step(title: string, fn: StepFn<TInputs>, options?: StepNodeOptions): void;
