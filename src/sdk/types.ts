@@ -108,12 +108,19 @@ export type MapOptions<T, TInputs = AnyInputs> = {
   onError?: "fail-fast" | "continue";
 };
 
+/** Options for retrying a step */
+export type RetryOptions = {
+  maxAttempts: number;
+  backoffMs?: number;
+};
+
 /** Options for step nodes */
 export type StepNodeOptions = {
   description?: string;
   tags?: string[];
   ui?: { icon?: string };
   aws?: { service?: string };
+  retry?: RetryOptions;
 };
 
 export type StepContext<TInputs = AnyInputs> = {
@@ -136,6 +143,10 @@ export type StepContext<TInputs = AnyInputs> = {
   waitIfPaused(): Promise<void>;
   sleep(ms: number): Promise<void>;
   run: RunStore;
+  /** Current attempt number (1-based) */
+  attempt: number;
+  /** Maximum number of attempts allowed for this step */
+  maxAttempts: number;
 };
 
 /** Context provided to steps defined inside a map template. Guaranteed LoopContext and RunStore. */
@@ -329,6 +340,8 @@ export type MapTemplateStepStartEvent = {
   at: string;
   iterationId: string;
   templateNodeId: string;
+  attempt?: number;
+  maxAttempts?: number;
 };
 
 export type MapTemplateStepEndEvent = {

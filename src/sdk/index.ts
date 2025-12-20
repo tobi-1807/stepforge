@@ -500,78 +500,116 @@ export async function executeWorkflow(
       if (isCancelled) break;
 
       if (item.type === "step" && item.fn) {
-        onEvent({
-          type: "node:start",
-          nodeId,
-          nodeTitle,
-          at: new Date().toISOString(),
-        });
+        const retryOpts = item.options?.retry;
+        const maxAttempts = retryOpts?.maxAttempts ?? 1;
+        const backoffMs = retryOpts?.backoffMs ?? 0;
 
-        const ctx: import("./types.js").StepContext = {
-          nodeId,
-          runId,
-          inputs,
-          log: createLogInterface(nodeId, nodeTitle),
-          progress: (p) =>
-            onEvent({ type: "node:progress", nodeId, nodeTitle, data: p }),
-          artifact: (a) =>
-            onEvent({ type: "node:artifact", nodeId, nodeTitle, data: a }),
-          output: (o) => {
-            outputs[nodeId] = o;
+        let attempt = 0;
+        let lastError: any = null;
+
+        while (attempt < maxAttempts) {
+          attempt++;
+          if (attempt > 1 && backoffMs > 0) {
+            await sleepHelper(backoffMs, nodeId);
+          }
+
+          onEvent({
+            type: "node:start",
+            nodeId,
+            nodeTitle,
+            at: new Date().toISOString(),
+            attempt,
+            maxAttempts,
+          });
+
+          const ctx: import("./types.js").StepContext = {
+            nodeId,
+            runId,
+            inputs,
+            log: createLogInterface(nodeId, nodeTitle),
+            progress: (p) =>
+              onEvent({ type: "node:progress", nodeId, nodeTitle, data: p }),
+            artifact: (a) =>
+              onEvent({ type: "node:artifact", nodeId, nodeTitle, data: a }),
+            output: (o) => {
+              outputs[nodeId] = o;
+              onEvent({
+                type: "node:output",
+                nodeId,
+                nodeTitle,
+                runId,
+                data: o,
+                at: new Date().toISOString(),
+              });
+            },
+            isCancelled: () => isCancelled,
+            throwIfCancelled: () => {
+              if (isCancelled) throw new Error("Cancelled");
+            },
+            isPaused: () => isPaused,
+            waitIfPaused: async () => await waitIfPausedHelper(nodeId),
+            sleep: async (ms) => await sleepHelper(ms, nodeId),
+            run: createRunStore(),
+            attempt,
+            maxAttempts,
+          };
+
+          try {
+            await item.fn(ctx);
             onEvent({
-              type: "node:output",
+              type: "node:end",
               nodeId,
               nodeTitle,
-              runId,
-              data: o,
+              status: "success",
               at: new Date().toISOString(),
             });
-          },
-          isCancelled: () => isCancelled,
-          throwIfCancelled: () => {
-            if (isCancelled) throw new Error("Cancelled");
-          },
-          isPaused: () => isPaused,
-          waitIfPaused: async () => await waitIfPausedHelper(nodeId),
-          sleep: async (ms) => await sleepHelper(ms, nodeId),
-          run: createRunStore(),
-        };
+            // Remove from failed steps if it was there (retry success)
+            const failedIndex = failedSteps.findIndex((f) => f.nodeId === nodeId);
+            if (failedIndex >= 0) {
+              failedSteps.splice(failedIndex, 1);
+              emitControlState();
+            }
+            lastError = null;
+            break; // Success!
+          } catch (e: any) {
+            lastError = e;
+            if (attempt < maxAttempts) {
+              // Emit retry event or just log
+              onEvent({
+                type: "node:log",
+                nodeId,
+                nodeTitle,
+                level: "warn",
+                msg: `Step failed, retrying (${attempt}/${maxAttempts}): ${e.message}`,
+                at: new Date().toISOString(),
+              });
+              continue;
+            }
 
-        try {
-          await item.fn(ctx);
-          onEvent({
-            type: "node:end",
-            nodeId,
-            nodeTitle,
-            status: "success",
-            at: new Date().toISOString(),
-          });
-          // Remove from failed steps if it was there (retry success)
-          const failedIndex = failedSteps.findIndex((f) => f.nodeId === nodeId);
-          if (failedIndex >= 0) {
-            failedSteps.splice(failedIndex, 1);
+            onEvent({
+              type: "node:end",
+              nodeId,
+              nodeTitle,
+              status: "failure",
+              error: e.message,
+              at: new Date().toISOString(),
+            });
+            // Track failed step
+            const existingFailed = failedSteps.find((f) => f.nodeId === nodeId);
+            if (existingFailed) {
+              existingFailed.error = e.message;
+            } else {
+              failedSteps.push({ nodeId, error: e.message });
+            }
             emitControlState();
           }
-        } catch (e: any) {
-          onEvent({
-            type: "node:end",
-            nodeId,
-            nodeTitle,
-            status: "failure",
-            error: e.message,
-            at: new Date().toISOString(),
-          });
-          // Track failed step
-          const existingFailed = failedSteps.find((f) => f.nodeId === nodeId);
-          if (existingFailed) {
-            existingFailed.error = e.message;
-          } else {
-            failedSteps.push({ nodeId, error: e.message });
-          }
-          emitControlState();
-          throw e;
         }
-      } else if (item.type === "group" && item.buildFn) {
+
+        if (lastError) {
+          throw lastError;
+        }
+      }
+      else if (item.type === "group" && item.buildFn) {
         onEvent({
           type: "node:start",
           nodeId,
@@ -744,128 +782,164 @@ export async function executeWorkflow(
               await waitIfPausedHelper(templateStep.nodeId);
               if (isCancelled) break;
 
-              const templateStepStartTime = Date.now();
+              const retryOpts = templateStep.options?.retry;
+              const maxAttempts = retryOpts?.maxAttempts ?? 1;
+              const backoffMs = retryOpts?.backoffMs ?? 0;
 
-              // Emit map:templateStep:start
-              onEvent({
-                type: "map:templateStep:start",
-                runId,
-                mapNodeId,
-                at: new Date().toISOString(),
-                iterationId,
-                templateNodeId: templateStep.nodeId,
-              });
+              let attempt = 0;
+              let stepSucceeded = false;
 
-              // Update spotlight
-              onEvent({
-                type: "map:progress",
-                runId,
-                mapNodeId,
-                at: new Date().toISOString(),
-                counts: { ...counts },
-                spotlight: {
+              while (attempt < maxAttempts) {
+                attempt++;
+                const templateStepStartTime = Date.now();
+                if (attempt > 1 && backoffMs > 0) {
+                  await sleepHelper(backoffMs, templateStep.nodeId);
+                }
+
+                // Emit map:templateStep:start
+                onEvent({
+                  type: "map:templateStep:start",
+                  runId,
+                  mapNodeId,
+                  at: new Date().toISOString(),
                   iterationId,
-                  index: i,
-                  key,
-                  activeTemplateNodeId: templateStep.nodeId,
-                },
-              });
+                  templateNodeId: templateStep.nodeId,
+                  attempt,
+                  maxAttempts,
+                });
 
-              // Create step context with loop info and iteration store
-              const stepCtx: IterationStepContext = {
-                nodeId: templateStep.nodeId,
-                runId,
-                inputs,
-                log: createLogInterface(
-                  templateStep.nodeId,
-                  templateStep.title
-                ),
-                progress: (p) =>
-                  onEvent({
-                    type: "node:progress",
-                    nodeId: templateStep.nodeId,
-                    nodeTitle: templateStep.title,
-                    data: p,
-                  }),
-                artifact: (a) =>
-                  onEvent({
-                    type: "node:artifact",
-                    nodeId: templateStep.nodeId,
-                    nodeTitle: templateStep.title,
-                    data: a,
-                  }),
-                output: (o) => {
-                  if (!mapOutputs[mapNodeId]) mapOutputs[mapNodeId] = {};
-                  if (!mapOutputs[mapNodeId][iterationId])
-                    mapOutputs[mapNodeId][iterationId] = {};
-                  mapOutputs[mapNodeId][iterationId][templateStep.nodeId] = o;
+                // Update spotlight
+                onEvent({
+                  type: "map:progress",
+                  runId,
+                  mapNodeId,
+                  at: new Date().toISOString(),
+                  counts: { ...counts },
+                  spotlight: {
+                    iterationId,
+                    index: i,
+                    key,
+                    activeTemplateNodeId: templateStep.nodeId,
+                  },
+                });
 
-                  onEvent({
-                    type: "node:output",
-                    nodeId: templateStep.nodeId,
-                    nodeTitle: templateStep.title,
-                    runId,
+                // Create step context with loop info and iteration store
+                const stepCtx: IterationStepContext = {
+                  nodeId: templateStep.nodeId,
+                  runId,
+                  inputs,
+                  log: createLogInterface(
+                    templateStep.nodeId,
+                    templateStep.title
+                  ),
+                  progress: (p) =>
+                    onEvent({
+                      type: "node:progress",
+                      nodeId: templateStep.nodeId,
+                      nodeTitle: templateStep.title,
+                      data: p,
+                    }),
+                  artifact: (a) =>
+                    onEvent({
+                      type: "node:artifact",
+                      nodeId: templateStep.nodeId,
+                      nodeTitle: templateStep.title,
+                      data: a,
+                    }),
+                  output: (o) => {
+                    if (!mapOutputs[mapNodeId]) mapOutputs[mapNodeId] = {};
+                    if (!mapOutputs[mapNodeId][iterationId])
+                      mapOutputs[mapNodeId][iterationId] = {};
+                    mapOutputs[mapNodeId][iterationId][templateStep.nodeId] = o;
+
+                    onEvent({
+                      type: "node:output",
+                      nodeId: templateStep.nodeId,
+                      nodeTitle: templateStep.title,
+                      runId,
+                      mapNodeId,
+                      iterationId,
+                      data: o,
+                      at: new Date().toISOString(),
+                    });
+                  },
+                  isCancelled: () => isCancelled,
+                  throwIfCancelled: () => {
+                    if (isCancelled) throw new Error("Cancelled");
+                  },
+                  isPaused: () => isPaused,
+                  waitIfPaused: async () =>
+                    await waitIfPausedHelper(templateStep.nodeId),
+                  sleep: async (ms) =>
+                    await sleepHelper(ms, templateStep.nodeId),
+                  run: createIterationStore(iterationId),
+                  loop: {
                     mapNodeId,
                     iterationId,
-                    data: o,
+                    index: i,
+                    key,
+                    item: currentItem,
+                  },
+                  iteration: createIterationStore(iterationId),
+                  attempt,
+                  maxAttempts,
+                };
+
+                try {
+                  await templateStep.fn(stepCtx);
+
+                  // Emit map:templateStep:end success
+                  onEvent({
+                    type: "map:templateStep:end",
+                    runId,
+                    mapNodeId,
                     at: new Date().toISOString(),
+                    iterationId,
+                    templateNodeId: templateStep.nodeId,
+                    status: "success",
+                    durationMs: Date.now() - templateStepStartTime,
                   });
-                },
-                isCancelled: () => isCancelled,
-                throwIfCancelled: () => {
-                  if (isCancelled) throw new Error("Cancelled");
-                },
-                isPaused: () => isPaused,
-                waitIfPaused: async () =>
-                  await waitIfPausedHelper(templateStep.nodeId),
-                sleep: async (ms) => await sleepHelper(ms, templateStep.nodeId),
-                run: createIterationStore(iterationId),
-                loop: {
-                  mapNodeId,
-                  iterationId,
-                  index: i,
-                  key,
-                  item: currentItem,
-                },
-                iteration: createIterationStore(iterationId),
-              };
+                  stepSucceeded = true;
+                  break;
+                } catch (e: any) {
+                  if (attempt < maxAttempts) {
+                    onEvent({
+                      type: "map:log",
+                      runId,
+                      mapNodeId,
+                      at: new Date().toISOString(),
+                      iterationId,
+                      templateNodeId: templateStep.nodeId,
+                      level: "warn",
+                      message: `Step failed, retrying (${attempt}/${maxAttempts}): ${e.message}`,
+                    });
+                    continue;
+                  }
 
-              try {
-                await templateStep.fn(stepCtx);
+                  // Emit map:templateStep:end failed
+                  onEvent({
+                    type: "map:templateStep:end",
+                    runId,
+                    mapNodeId,
+                    at: new Date().toISOString(),
+                    iterationId,
+                    templateNodeId: templateStep.nodeId,
+                    status: "failed",
+                    durationMs: Date.now() - templateStepStartTime,
+                    error: { message: e.message, stack: e.stack },
+                  });
 
-                // Emit map:templateStep:end success
-                onEvent({
-                  type: "map:templateStep:end",
-                  runId,
-                  mapNodeId,
-                  at: new Date().toISOString(),
-                  iterationId,
-                  templateNodeId: templateStep.nodeId,
-                  status: "success",
-                  durationMs: Date.now() - templateStepStartTime,
-                });
-              } catch (e: any) {
-                // Emit map:templateStep:end failed
-                onEvent({
-                  type: "map:templateStep:end",
-                  runId,
-                  mapNodeId,
-                  at: new Date().toISOString(),
-                  iterationId,
-                  templateNodeId: templateStep.nodeId,
-                  status: "failed",
-                  durationMs: Date.now() - templateStepStartTime,
-                  error: { message: e.message, stack: e.stack },
-                });
-
-                iterationFailed = true;
-                iterationError = { message: e.message, stack: e.stack };
-
-                if (onError === "fail-fast") {
-                  mapError = e;
+                  iterationFailed = true;
+                  iterationError = { message: e.message, stack: e.stack };
                   break;
                 }
-                // If continue, we break out of template steps but continue iterations
+              }
+
+              if (!stepSucceeded) {
+                if (onError === "fail-fast") {
+                  mapError = new Error(iterationError?.message || "Step failed");
+                  break;
+                }
                 break;
               }
             }

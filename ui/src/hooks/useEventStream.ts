@@ -55,6 +55,7 @@ const MAX_RECENT_ITERATIONS = 200;
 export function useEventStream(runId: string | null) {
     const [events, setEvents] = useState<RunEvent[]>([]);
     const [nodeStates, setNodeStates] = useState<Record<string, string>>({});
+    const [nodeAttempts, setNodeAttempts] = useState<Record<string, { attempt: number; maxAttempts?: number }>>({});
     const [mapStates, setMapStates] = useState<Record<string, MapState>>({});
     const [nodeOutputs, setNodeOutputs] = useState<Record<string, any>>({});
     const [mapOutputs, setMapOutputs] = useState<Record<string, Record<string, Record<string, any>>>>({});
@@ -92,6 +93,12 @@ export function useEventStream(runId: string | null) {
                 // Handle node:* events (existing behavior)
                 if (event.type === 'node:start') {
                     setNodeStates(prev => ({ ...prev, [event.nodeId!]: 'running' }));
+                    if (event.attempt) {
+                        setNodeAttempts(prev => ({
+                            ...prev,
+                            [event.nodeId!]: { attempt: event.attempt, maxAttempts: event.maxAttempts }
+                        }));
+                    }
                 } else if (event.type === 'node:end') {
                     setNodeStates(prev => ({ ...prev, [event.nodeId!]: event.status || 'unknown' }));
                 } else if (event.type === "node:output") {
@@ -115,6 +122,7 @@ export function useEventStream(runId: string | null) {
                 } else if (event.type === 'run:start') {
                     setEvents([]); // clear on new run start if same ID?
                     setNodeStates({});
+                    setNodeAttempts({});
                     setMapStates({});
                     setNodeOutputs({});
                     setMapOutputs({});
@@ -145,6 +153,13 @@ export function useEventStream(runId: string | null) {
                             },
                         };
                     });
+                } else if (event.type === 'map:templateStep:start') {
+                    if (event.attempt) {
+                        setNodeAttempts(prev => ({
+                            ...prev,
+                            [event.templateNodeId!]: { attempt: event.attempt, maxAttempts: event.maxAttempts }
+                        }));
+                    }
                 } else if (event.type === 'map:end') {
                     const mapNodeId = event.mapNodeId as string;
                     setMapStates(prev => {
@@ -210,10 +225,12 @@ export function useEventStream(runId: string | null) {
 
     const clearEvents = useCallback(() => {
         setEvents([]);
+        setNodeStates({});
+        setNodeAttempts({});
         setMapStates({});
         setNodeOutputs({});
         setMapOutputs({});
     }, []);
 
-    return { events, nodeStates, mapStates, nodeOutputs, mapOutputs, clearEvents };
+    return { events, nodeStates, nodeAttempts, mapStates, nodeOutputs, mapOutputs, clearEvents };
 }

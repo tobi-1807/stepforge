@@ -12,11 +12,13 @@ export type NodeStatus = 'pending' | 'running' | 'success' | 'failure';
 
 interface NodeStatusIndicatorProps {
     status?: NodeStatus;
+    attempt?: number;
+    maxAttempts?: number;
     children: React.ReactNode;
     className?: string;
 }
 
-export function NodeStatusIndicator({ status = 'pending', children, className }: NodeStatusIndicatorProps) {
+export function NodeStatusIndicator({ status = 'pending', attempt, maxAttempts, children, className }: NodeStatusIndicatorProps) {
     return (
         <div className={cn("relative group", className)}>
             {/* Status Border/Glow Effect */}
@@ -51,6 +53,13 @@ export function NodeStatusIndicator({ status = 'pending', children, className }:
                     {status === 'running' && <Loader2 className="w-4 h-4 animate-spin" />}
                     {status === 'success' && <CheckCircle2 className="w-4 h-4" />}
                     {status === 'failure' && <XCircle className="w-4 h-4" />}
+                </div>
+            )}
+
+            {/* Attempt Count (Bottom Right) */}
+            {attempt !== undefined && attempt > 1 && (
+                <div className="absolute -bottom-2 -right-2 px-1.5 py-0.5 rounded bg-gray-800 text-[10px] font-bold text-gray-300 border border-gray-700 shadow-sm z-20">
+                    {attempt}{maxAttempts ? `/${maxAttempts}` : ''}
                 </div>
             )}
         </div>

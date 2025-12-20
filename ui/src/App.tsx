@@ -22,7 +22,7 @@ export default function App() {
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const { nodeStates, mapStates, events, nodeOutputs, mapOutputs, clearEvents } =
+  const { nodeStates, nodeAttempts, mapStates, events, nodeOutputs, mapOutputs, clearEvents } =
     useEventStream(currentRunId);
 
   const fetchWorkflows = (isInitial = false) => {
@@ -154,6 +154,7 @@ export default function App() {
               <GraphViewer
                 graph={graph}
                 nodeStates={nodeStates}
+                nodeAttempts={nodeAttempts}
                 mapStates={mapStates}
                 onNodeClick={handleNodeClick}
               />

@@ -25,6 +25,7 @@ type GraphNode = {
 type Props = {
   graph: any;
   nodeStates: Record<string, string>;
+  nodeAttempts?: Record<string, { attempt: number; maxAttempts?: number }>;
   mapStates: Record<string, MapState>;
   onNodeClick?: (nodeId: string) => void;
 };
@@ -32,6 +33,7 @@ type Props = {
 export function GraphViewer({
   graph,
   nodeStates,
+  nodeAttempts = {},
   mapStates,
   onNodeClick,
 }: Props) {
@@ -119,19 +121,23 @@ export function GraphViewer({
 
         // Standard node status update
         const status = nodeStates[node.id] as NodeStatus | undefined;
-        if (node.data && node.data.status !== status && status) {
+        const attemptInfo = nodeAttempts[node.id];
+
+        if (node.data && (node.data.status !== status || node.data.attempt !== attemptInfo?.attempt)) {
           return {
             ...node,
             data: {
               ...node.data,
-              status: status,
+              status: status || node.data.status,
+              attempt: attemptInfo?.attempt,
+              maxAttempts: attemptInfo?.maxAttempts,
             },
           };
         }
         return node;
       })
     );
-  }, [nodeStates, mapStates, setNodes]);
+  }, [nodeStates, nodeAttempts, mapStates, setNodes]);
 
   return (
     <div className="h-full w-full bg-gray-900">
