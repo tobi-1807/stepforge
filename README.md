@@ -31,13 +31,26 @@ Stepforge consists of three parts, shipped as a single package:
 Developers write workflows in `.forge.ts` files using a small SDK:
 
 ```ts
-export default defineWorkflow({
-  name: "Example",
-  build: (wf) => {
-    wf.step("First step", async (ctx) => { ... });
-    wf.step("Second step", async (ctx) => { ... });
-  }
+import { workflow } from "stepforge";
+
+export default workflow("Example", (wf) => {
+  wf.step("First step", async (ctx) => { ... });
+  wf.step("Second step", async (ctx) => { ... });
 });
+```
+
+Need typed inputs? Pass an array as the second argument:
+
+```ts
+export default workflow(
+  "Example",
+  [{ name: "count", type: "number", label: "Count", default: 5 }] as const,
+  (wf) => {
+    wf.step("Process", async (ctx) => {
+      ctx.log.info(`Count: ${ctx.inputs.count}`);
+    });
+  }
+);
 ```
 
 Steps are declared in code. No separate graph definition is required.

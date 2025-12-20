@@ -9,6 +9,7 @@ import {
   LoopBuilder,
   StepNodeOptions,
   InputParameter,
+  InferInputs,
 } from "./types.js";
 export * from "./types.js";
 
@@ -16,6 +17,8 @@ export * from "./types.js";
  * Define a workflow with strongly-typed inputs.
  *
  * Use `inputs: [...] as const` to enable automatic type inference for `ctx.inputs`.
+ *
+ * @deprecated Use `workflow()` instead for a simpler API.
  *
  * @example
  * ```ts
@@ -37,6 +40,60 @@ export function defineWorkflow<
   const TInputsDef extends readonly InputParameter[]
 >(def: WorkflowDefinition<TInputsDef>): WorkflowDefinition<TInputsDef> {
   return def;
+}
+
+/**
+ * Define a workflow with minimal ceremony.
+ *
+ * Overloads:
+ * - `workflow(name, build)` – no inputs, `ctx.inputs` is `{}`
+ * - `workflow(name, inputs, build)` – typed inputs via `as const`
+ *
+ * @example
+ * ```ts
+ * // Simple workflow (no inputs)
+ * export default workflow("Hello", (wf) => {
+ *   wf.step("Greet", async (ctx) => {
+ *     ctx.log.info("Hello world!");
+ *   });
+ * });
+ *
+ * // Workflow with typed inputs
+ * export default workflow(
+ *   "Counter",
+ *   [{ name: "count", type: "number", label: "Count", default: 5 }] as const,
+ *   (wf) => {
+ *     wf.step("Process", async (ctx) => {
+ *       ctx.log.info(`Count is ${ctx.inputs.count}`);
+ *     });
+ *   }
+ * );
+ * ```
+ */
+export function workflow(
+  name: string,
+  build: (wf: WorkflowBuilder<{}>) => void
+): WorkflowDefinition<[]>;
+export function workflow<const TInputsDef extends readonly InputParameter[]>(
+  name: string,
+  inputs: TInputsDef,
+  build: (wf: WorkflowBuilder<InferInputs<TInputsDef>>) => void
+): WorkflowDefinition<TInputsDef>;
+export function workflow<const TInputsDef extends readonly InputParameter[]>(
+  name: string,
+  inputsOrBuild: TInputsDef | ((wf: WorkflowBuilder<any>) => void),
+  maybeBuild?: (wf: WorkflowBuilder<InferInputs<TInputsDef>>) => void
+): WorkflowDefinition<TInputsDef> {
+  if (typeof inputsOrBuild === "function") {
+    // workflow(name, build)
+    return { name, build: inputsOrBuild } as WorkflowDefinition<TInputsDef>;
+  }
+  // workflow(name, inputs, build)
+  return {
+    name,
+    inputs: inputsOrBuild,
+    build: maybeBuild!,
+  } as WorkflowDefinition<TInputsDef>;
 }
 
 // Shared ID generation logic

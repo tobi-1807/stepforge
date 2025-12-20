@@ -1,17 +1,17 @@
 /**
  * Example workflow template for new users.
  */
-export const exampleWorkflowTemplate = `import { defineWorkflow } from "stepforge";
+export const exampleWorkflowTemplate = `import { workflow } from "stepforge";
 
 /**
  * My First Workflow
- * 
+ *
  * This is a simple example workflow that demonstrates the basics of Stepforge.
  * Edit this file and save to see hot-reload in action!
  */
-export default defineWorkflow({
-  name: "Hello World",
-  inputs: [
+export default workflow(
+  "Hello World",
+  [
     {
       name: "greeting",
       type: "string",
@@ -20,7 +20,7 @@ export default defineWorkflow({
       default: "Hello from Stepforge!",
     },
   ] as const,
-  build: (wf) => {
+  (wf) => {
     wf.step("Say hello", async (ctx) => {
       const message = ctx.inputs.greeting;
       ctx.log.info(message);
@@ -39,7 +39,7 @@ export default defineWorkflow({
       await new Promise((r) => setTimeout(r, 500));
       ctx.log.info("All done! 🎉");
     });
-  },
-});
+  }
+);
 `;
 

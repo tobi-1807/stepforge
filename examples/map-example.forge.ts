@@ -1,4 +1,4 @@
-import { defineWorkflow } from "../src/sdk/index.js";
+import { workflow } from "../src/sdk/index.js";
 
 /**
  * Example workflow demonstrating wf.map() - the map/loop construct.
@@ -11,9 +11,9 @@ import { defineWorkflow } from "../src/sdk/index.js";
  * - ctx.run for computed values shared between steps
  * - ctx.iteration for per-iteration scratch space within map template steps
  */
-export default defineWorkflow({
-  name: "Map Example - Process Items",
-  inputs: [
+export default workflow(
+  "Map Example - Process Items",
+  [
     {
       name: "itemCount",
       type: "number",
@@ -22,7 +22,7 @@ export default defineWorkflow({
       default: 5,
     },
   ] as const,
-  build: (wf) => {
+  (wf) => {
     // Step 1: Generate items to process
     wf.step("Generate items", async (ctx) => {
       // ctx.inputs.itemCount is `number` — default is applied by runtime
@@ -96,5 +96,5 @@ export default defineWorkflow({
     wf.step("Summarize", async (ctx) => {
       ctx.log.info("All items processed successfully!");
     });
-  },
-});
+  }
+);

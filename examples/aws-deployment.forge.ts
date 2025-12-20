@@ -1,8 +1,8 @@
-import { defineWorkflow } from "../src/sdk/index.js";
+import { workflow } from "../src/sdk/index.js";
 
-export default defineWorkflow({
-  name: "AWS Deployment Pipeline",
-  inputs: [
+export default workflow(
+  "AWS Deployment Pipeline",
+  [
     {
       name: "environment",
       type: "string",
@@ -36,7 +36,7 @@ export default defineWorkflow({
       default: true,
     },
   ] as const,
-  build: (wf) => {
+  (wf) => {
     wf.step(
       "Validate Configuration",
       async (ctx) => {
@@ -147,5 +147,5 @@ export default defineWorkflow({
         tags: ["validation", "health-check"],
       }
     );
-  },
-});
+  }
+);
