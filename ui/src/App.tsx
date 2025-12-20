@@ -43,7 +43,8 @@ export default function App() {
 
     // Setup WS for system events
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${window.location.host}/ws`);
+    const wsUrl = `${proto}://${window.location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
