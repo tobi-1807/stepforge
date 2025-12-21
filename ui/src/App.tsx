@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { WorkflowList } from "./components/WorkflowList";
 import { GraphViewer } from "./components/GraphViewer";
 import { RunConfigModal } from "./components/RunConfigModal";
@@ -152,7 +152,7 @@ export default function App() {
               className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded flex items-center gap-2 text-sm font-medium transition-colors"
             >
               <Play size={16} fill="currentColor" />
-              Run Workflow
+              Run
             </button>
           )}
         </header>
@@ -166,6 +166,7 @@ export default function App() {
                   nodeStates={nodeStates}
                   nodeAttempts={nodeAttempts}
                   mapStates={mapStates}
+                  checkResults={checkResults}
                   onNodeClick={handleNodeClick}
                 />
               </ReactFlowProvider>

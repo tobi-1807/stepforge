@@ -4,6 +4,8 @@ import type { ElkNode, ElkExtendedEdge } from "elkjs/lib/elk-api";
 // Node dimension constants
 export const NODE_WIDTH = 180;
 export const NODE_HEIGHT = 80;
+export const CHECK_NODE_WIDTH = 162;
+export const CHECK_NODE_HEIGHT = 48;
 export const CONTAINER_WIDTH = 250;
 export const MAP_HEADER_HEIGHT = 90;
 export const PADDING = 40;
@@ -77,11 +79,12 @@ function convertToElkGraph(graph: GraphInput): ElkNode {
         children: children.map((child) => buildElkNode(child)),
       };
     } else {
-      // Leaf node (step)
+      // Leaf node (step or check)
+      const isCheck = node.kind === "check";
       return {
         id: node.id,
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        width: isCheck ? CHECK_NODE_WIDTH : NODE_WIDTH,
+        height: isCheck ? CHECK_NODE_HEIGHT : NODE_HEIGHT,
       };
     }
   };
@@ -169,14 +172,16 @@ function extractNodes(
       result.push(...childNodes);
     } else {
       // Regular step or check node
+      const isCheck = graphNode.kind === "check";
       const stepNode: any = {
         id: graphNode.id,
-        type: "statusNode",
+        type: isCheck ? "checkNode" : "statusNode",
         position,
         data: {
           label: graphNode.title,
           status: "pending",
-          kind: graphNode.kind, // Pass node kind for check styling
+          kind: graphNode.kind,
+          message: graphNode.meta?.check?.message, // Pass check message for tooltip
           ...(parentId &&
             graphNodes[parentId]?.kind === "map" && {
               isMapTemplateStep: true,

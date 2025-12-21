@@ -11,9 +11,10 @@ import {
 
 import "@xyflow/react/dist/style.css";
 import { StatusNode } from "./StatusNode";
+import { CheckNode } from "./CheckNode";
 import { MapContainerNode } from "./MapContainerNode";
 import { NodeStatus } from "./NodeStatusIndicator";
-import { MapState } from "../hooks/useEventStream";
+import { MapState, CheckResult } from "../hooks/useEventStream";
 import { layoutGraph } from "../hooks/useElkLayout";
 
 // Local type definitions to avoid linking SDK for MVP UI
@@ -29,6 +30,7 @@ type Props = {
   nodeStates: Record<string, string>;
   nodeAttempts?: Record<string, { attempt: number; maxAttempts?: number }>;
   mapStates: Record<string, MapState>;
+  checkResults?: Record<string, CheckResult>;
   onNodeClick?: (nodeId: string) => void;
 };
 
@@ -37,16 +39,17 @@ export function GraphViewer({
   nodeStates,
   nodeAttempts = {},
   mapStates,
+  checkResults = {},
   onNodeClick,
 }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
   const { fitView } = useReactFlow();
 
-
   const nodeTypes = useMemo(
     () => ({
       statusNode: StatusNode,
+      checkNode: CheckNode,
       mapContainerNode: MapContainerNode,
     }),
     []
@@ -127,11 +130,17 @@ export function GraphViewer({
           return node;
         }
 
-        // Standard node status update
+        // Standard node status update (including check nodes)
         const status = nodeStates[node.id] as NodeStatus | undefined;
         const attemptInfo = nodeAttempts[node.id];
+        const checkResult = checkResults[node.id];
 
-        if (node.data && (node.data.status !== status || node.data.attempt !== attemptInfo?.attempt)) {
+        if (
+          node.data &&
+          (node.data.status !== status ||
+            node.data.attempt !== attemptInfo?.attempt ||
+            node.data.checkResult !== checkResult)
+        ) {
           return {
             ...node,
             data: {
@@ -139,13 +148,14 @@ export function GraphViewer({
               status: status || node.data.status,
               attempt: attemptInfo?.attempt,
               maxAttempts: attemptInfo?.maxAttempts,
+              checkResult: checkResult,
             },
           };
         }
         return node;
       })
     );
-  }, [nodeStates, nodeAttempts, mapStates, setNodes]);
+  }, [nodeStates, nodeAttempts, mapStates, checkResults, setNodes]);
 
   return (
     <div className="h-full w-full bg-gray-900">
@@ -158,7 +168,6 @@ export function GraphViewer({
         nodeTypes={nodeTypes}
         fitView={false}
         proOptions={{
-
           hideAttribution: true,
         }}
       >
