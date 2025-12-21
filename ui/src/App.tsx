@@ -8,7 +8,6 @@ import { useEventStream } from "./hooks/useEventStream";
 import { Play, Trash2, Layers, FileCode2, RefreshCw } from "lucide-react";
 import { ReactFlowProvider } from "@xyflow/react";
 
-
 type Workflow = {
   id: string;
   name: string;
@@ -24,8 +23,16 @@ export default function App() {
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const { nodeStates, nodeAttempts, mapStates, events, nodeOutputs, mapOutputs, clearEvents } =
-    useEventStream(currentRunId);
+  const {
+    nodeStates,
+    nodeAttempts,
+    mapStates,
+    events,
+    nodeOutputs,
+    mapOutputs,
+    checkResults,
+    clearEvents,
+  } = useEventStream(currentRunId);
 
   const fetchWorkflows = (isInitial = false) => {
     fetch("/api/workflows")
@@ -172,6 +179,14 @@ export default function App() {
                 }
                 outputs={nodeOutputs}
                 mapOutputs={mapOutputs}
+                checkResult={
+                  selectedNode?.kind === "check"
+                    ? checkResults[selectedNode.id]
+                    : undefined
+                }
+                nodeStatus={
+                  selectedNode ? nodeStates[selectedNode.id] : undefined
+                }
                 onClose={() => setSelectedNode(null)}
               />
             </>

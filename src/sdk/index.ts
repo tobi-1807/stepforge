@@ -5,10 +5,13 @@ import {
   GraphNode,
   GraphEdge,
   StepFn,
+  CheckFn,
   IterationStepFn,
+  IterationCheckFn,
   MapOptions,
   LoopBuilder,
   StepNodeOptions,
+  CheckNodeOptions,
   IterationStepContext,
   InputParameter,
   InferInputs,
@@ -29,7 +32,6 @@ export * from "./types.js";
 export function inputs<const T extends readonly InputParameter[]>(defs: T): T {
   return defs;
 }
-
 
 /**
  * Define a workflow with minimal ceremony.
@@ -145,6 +147,32 @@ export function buildGraph(
 
         lastNodeInScope = id;
       },
+      check(title, fn, options) {
+        const logicalPath = parentPath ? `${parentPath}/${title}` : title;
+        const id = generateNodeId(version, logicalPath);
+
+        nodes[id] = {
+          id,
+          kind: "check",
+          title,
+          parentId,
+          meta: {
+            check: {
+              message: options?.message,
+              softFail: options?.softFail,
+            },
+          },
+        };
+
+        // Sequence dependency
+        if (lastNodeInScope) {
+          edges.push({ from: lastNodeInScope, to: id, type: "sequence" });
+        } else if (parentId && parentId !== rootId) {
+          // Group handling
+        }
+
+        lastNodeInScope = id;
+      },
       group(title, fn, options) {
         const logicalPath = parentPath ? `${parentPath}/${title}` : title;
         const id = generateNodeId(version, logicalPath);
@@ -219,6 +247,38 @@ export function buildGraph(
             };
 
             // Sequence edges between template steps
+            if (lastTemplateNodeId) {
+              edges.push({
+                from: lastTemplateNodeId,
+                to: templateNodeId,
+                type: "sequence",
+              });
+            }
+
+            lastTemplateNodeId = templateNodeId;
+          },
+          check(
+            checkTitle: string,
+            _fn: IterationCheckFn<any, any>,
+            checkOptions?: CheckNodeOptions
+          ) {
+            const templateLogicalPath = `${logicalPath}/${checkTitle}`;
+            const templateNodeId = generateNodeId(version, templateLogicalPath);
+
+            nodes[templateNodeId] = {
+              id: templateNodeId,
+              kind: "check",
+              title: checkTitle,
+              parentId: mapNodeId,
+              meta: {
+                check: {
+                  message: checkOptions?.message,
+                  softFail: checkOptions?.softFail,
+                },
+              },
+            };
+
+            // Sequence edges between template steps/checks
             if (lastTemplateNodeId) {
               edges.push({
                 from: lastTemplateNodeId,
@@ -446,26 +506,31 @@ export async function executeWorkflow(
       }),
   });
 
+  // Track soft failures at workflow level
+  let hasSoftFailures = false;
+
   const traverseAndExecute = async (
     buildFn: (b: WorkflowBuilder) => void,
     parentPath: string,
     parentId: string | null
   ) => {
     const items: Array<{
-      type: "step" | "group" | "map";
+      type: "step" | "group" | "map" | "check";
       title: string;
       fn?: StepFn;
+      checkFn?: CheckFn;
       buildFn?: (b: WorkflowBuilder) => void;
       mapOpts?: MapOptions<any>;
-      mapBuildTemplate?: (
-        loop: LoopBuilder<any, any>
-      ) => void;
+      mapBuildTemplate?: (loop: LoopBuilder<any, any>) => void;
       options?: any;
     }> = [];
 
     const builder: WorkflowBuilder = {
       step(title, fn, options) {
         items.push({ type: "step", title, fn, options });
+      },
+      check(title, fn, options) {
+        items.push({ type: "check", title, checkFn: fn, options });
       },
       group(title, buildFn, options) {
         items.push({ type: "group", title, buildFn, options });
@@ -564,7 +629,9 @@ export async function executeWorkflow(
               at: new Date().toISOString(),
             });
             // Remove from failed steps if it was there (retry success)
-            const failedIndex = failedSteps.findIndex((f) => f.nodeId === nodeId);
+            const failedIndex = failedSteps.findIndex(
+              (f) => f.nodeId === nodeId
+            );
             if (failedIndex >= 0) {
               failedSteps.splice(failedIndex, 1);
               emitControlState();
@@ -608,8 +675,211 @@ export async function executeWorkflow(
         if (lastError) {
           throw lastError;
         }
-      }
-      else if (item.type === "group" && item.buildFn) {
+      } else if (item.type === "check" && item.checkFn) {
+        // ─────────────────────────────────────────────────────────────────────
+        // Check node execution
+        // ─────────────────────────────────────────────────────────────────────
+        const checkOptions = item.options as CheckNodeOptions | undefined;
+        const retryOpts = checkOptions?.retry;
+        const maxAttempts = retryOpts?.maxAttempts ?? 1;
+        const backoffMs = retryOpts?.backoffMs ?? 0;
+        const softFail = checkOptions?.softFail ?? false;
+        const checkMessage = checkOptions?.message;
+        const timeoutMs = checkOptions?.timeoutMs;
+
+        let attempt = 0;
+        let lastError: any = null;
+        let checkPassed = false;
+
+        while (attempt < maxAttempts) {
+          attempt++;
+          if (attempt > 1 && backoffMs > 0) {
+            await sleepHelper(backoffMs, nodeId);
+          }
+
+          onEvent({
+            type: "node:start",
+            nodeId,
+            nodeTitle,
+            nodeKind: "check",
+            at: new Date().toISOString(),
+            attempt,
+            maxAttempts,
+          });
+
+          const ctx: import("./types.js").StepContext = {
+            nodeId,
+            runId,
+            inputs,
+            log: createLogInterface(nodeId, nodeTitle),
+            progress: (p) =>
+              onEvent({ type: "node:progress", nodeId, nodeTitle, data: p }),
+            artifact: (a) =>
+              onEvent({ type: "node:artifact", nodeId, nodeTitle, data: a }),
+            output: (o) => {
+              outputs[nodeId] = o;
+              onEvent({
+                type: "node:output",
+                nodeId,
+                nodeTitle,
+                runId,
+                data: o,
+                at: new Date().toISOString(),
+              });
+            },
+            isCancelled: () => isCancelled,
+            throwIfCancelled: () => {
+              if (isCancelled) throw new Error("Cancelled");
+            },
+            isPaused: () => isPaused,
+            waitIfPaused: async () => await waitIfPausedHelper(nodeId),
+            sleep: async (ms) => await sleepHelper(ms, nodeId),
+            run: createRunStore(),
+            attempt,
+            maxAttempts,
+          };
+
+          try {
+            // Execute predicate with optional timeout
+            let result: boolean;
+            if (timeoutMs) {
+              const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(new Error(`Check timed out after ${timeoutMs}ms`)),
+                  timeoutMs
+                )
+              );
+              result = await Promise.race([
+                Promise.resolve(item.checkFn(ctx)),
+                timeoutPromise,
+              ]);
+            } else {
+              result = await Promise.resolve(item.checkFn(ctx));
+            }
+
+            if (result === true) {
+              // Check passed
+              checkPassed = true;
+              onEvent({
+                type: "node:end",
+                nodeId,
+                nodeTitle,
+                nodeKind: "check",
+                status: "success",
+                checkResult: "pass",
+                at: new Date().toISOString(),
+              });
+              // Remove from failed steps if it was there (retry success)
+              const failedIndex = failedSteps.findIndex(
+                (f) => f.nodeId === nodeId
+              );
+              if (failedIndex >= 0) {
+                failedSteps.splice(failedIndex, 1);
+                emitControlState();
+              }
+              lastError = null;
+              break; // Success!
+            } else {
+              // Check failed (returned false)
+              const failMessage = checkMessage || "Check failed";
+
+              if (attempt < maxAttempts) {
+                // Retry
+                onEvent({
+                  type: "node:log",
+                  nodeId,
+                  nodeTitle,
+                  level: "warn",
+                  msg: `Check failed, retrying (${attempt}/${maxAttempts}): ${failMessage}`,
+                  at: new Date().toISOString(),
+                });
+                continue;
+              }
+
+              // Final attempt failed
+              if (softFail) {
+                // Soft failure - mark as warning but continue
+                hasSoftFailures = true;
+                onEvent({
+                  type: "node:end",
+                  nodeId,
+                  nodeTitle,
+                  nodeKind: "check",
+                  status: "warning",
+                  checkResult: "fail",
+                  checkMessage: failMessage,
+                  at: new Date().toISOString(),
+                });
+                checkPassed = true; // Don't throw, continue workflow
+                lastError = null;
+                break;
+              } else {
+                // Hard failure
+                lastError = new Error(failMessage);
+                onEvent({
+                  type: "node:end",
+                  nodeId,
+                  nodeTitle,
+                  nodeKind: "check",
+                  status: "failure",
+                  checkResult: "fail",
+                  checkMessage: failMessage,
+                  error: failMessage,
+                  at: new Date().toISOString(),
+                });
+                // Track failed step
+                const existingFailed = failedSteps.find(
+                  (f) => f.nodeId === nodeId
+                );
+                if (existingFailed) {
+                  existingFailed.error = failMessage;
+                } else {
+                  failedSteps.push({ nodeId, error: failMessage });
+                }
+                emitControlState();
+              }
+            }
+          } catch (e: any) {
+            // Check errored (threw exception) - different from returning false
+            lastError = e;
+            if (attempt < maxAttempts) {
+              onEvent({
+                type: "node:log",
+                nodeId,
+                nodeTitle,
+                level: "warn",
+                msg: `Check errored, retrying (${attempt}/${maxAttempts}): ${e.message}`,
+                at: new Date().toISOString(),
+              });
+              continue;
+            }
+
+            onEvent({
+              type: "node:end",
+              nodeId,
+              nodeTitle,
+              nodeKind: "check",
+              status: "failure",
+              checkResult: "error",
+              error: e.message,
+              at: new Date().toISOString(),
+            });
+            // Track failed step
+            const existingFailed = failedSteps.find((f) => f.nodeId === nodeId);
+            if (existingFailed) {
+              existingFailed.error = e.message;
+            } else {
+              failedSteps.push({ nodeId, error: e.message });
+            }
+            emitControlState();
+          }
+        }
+
+        if (lastError) {
+          throw lastError;
+        }
+      } else if (item.type === "group" && item.buildFn) {
         onEvent({
           type: "node:start",
           nodeId,
@@ -654,11 +924,13 @@ export async function executeWorkflow(
           at: new Date().toISOString(),
         });
 
-        // Collect template steps by calling buildTemplate in "template mode"
+        // Collect template steps/checks by calling buildTemplate in "template mode"
         const templateSteps: Array<{
+          kind: "step" | "check";
           title: string;
-          fn: IterationStepFn<any, any>;
-          options?: StepNodeOptions;
+          fn?: IterationStepFn<any, any>;
+          checkFn?: IterationCheckFn<any, any>;
+          options?: StepNodeOptions | CheckNodeOptions;
           nodeId: string;
         }> = [];
 
@@ -671,9 +943,25 @@ export async function executeWorkflow(
             const templateLogicalPath = `${logicalPath}/${stepTitle}`;
             const templateNodeId = generateNodeId(version, templateLogicalPath);
             templateSteps.push({
+              kind: "step",
               title: stepTitle,
               fn,
               options: stepOptions,
+              nodeId: templateNodeId,
+            });
+          },
+          check(
+            checkTitle: string,
+            fn: IterationCheckFn<any, any>,
+            checkOptions?: CheckNodeOptions
+          ) {
+            const templateLogicalPath = `${logicalPath}/${checkTitle}`;
+            const templateNodeId = generateNodeId(version, templateLogicalPath);
+            templateSteps.push({
+              kind: "check",
+              title: checkTitle,
+              checkFn: fn,
+              options: checkOptions,
               nodeId: templateNodeId,
             });
           },
@@ -774,7 +1062,7 @@ export async function executeWorkflow(
               | import("./types.js").SerializedError
               | undefined;
 
-            // Execute template steps for this iteration
+            // Execute template steps/checks for this iteration
             for (const templateStep of templateSteps) {
               if (isCancelled) break;
 
@@ -788,6 +1076,15 @@ export async function executeWorkflow(
 
               let attempt = 0;
               let stepSucceeded = false;
+
+              // Check-specific options
+              const isCheck = templateStep.kind === "check";
+              const checkOptions = isCheck
+                ? (templateStep.options as CheckNodeOptions | undefined)
+                : undefined;
+              const softFail = checkOptions?.softFail ?? false;
+              const checkMessage = checkOptions?.message;
+              const timeoutMs = checkOptions?.timeoutMs;
 
               while (attempt < maxAttempts) {
                 attempt++;
@@ -804,6 +1101,7 @@ export async function executeWorkflow(
                   at: new Date().toISOString(),
                   iterationId,
                   templateNodeId: templateStep.nodeId,
+                  templateKind: templateStep.kind,
                   attempt,
                   maxAttempts,
                 });
@@ -886,21 +1184,122 @@ export async function executeWorkflow(
                 };
 
                 try {
-                  await templateStep.fn(stepCtx);
+                  if (isCheck && templateStep.checkFn) {
+                    // Execute check predicate
+                    let result: boolean;
+                    if (timeoutMs) {
+                      const timeoutPromise = new Promise<never>((_, reject) =>
+                        setTimeout(
+                          () =>
+                            reject(
+                              new Error(`Check timed out after ${timeoutMs}ms`)
+                            ),
+                          timeoutMs
+                        )
+                      );
+                      result = await Promise.race([
+                        Promise.resolve(templateStep.checkFn(stepCtx)),
+                        timeoutPromise,
+                      ]);
+                    } else {
+                      result = await Promise.resolve(
+                        templateStep.checkFn(stepCtx)
+                      );
+                    }
 
-                  // Emit map:templateStep:end success
-                  onEvent({
-                    type: "map:templateStep:end",
-                    runId,
-                    mapNodeId,
-                    at: new Date().toISOString(),
-                    iterationId,
-                    templateNodeId: templateStep.nodeId,
-                    status: "success",
-                    durationMs: Date.now() - templateStepStartTime,
-                  });
-                  stepSucceeded = true;
-                  break;
+                    if (result === true) {
+                      // Check passed
+                      onEvent({
+                        type: "map:templateStep:end",
+                        runId,
+                        mapNodeId,
+                        at: new Date().toISOString(),
+                        iterationId,
+                        templateNodeId: templateStep.nodeId,
+                        templateKind: "check",
+                        status: "success",
+                        checkResult: "pass",
+                        durationMs: Date.now() - templateStepStartTime,
+                      });
+                      stepSucceeded = true;
+                      break;
+                    } else {
+                      // Check failed (returned false)
+                      const failMessage = checkMessage || "Check failed";
+
+                      if (attempt < maxAttempts) {
+                        onEvent({
+                          type: "map:log",
+                          runId,
+                          mapNodeId,
+                          at: new Date().toISOString(),
+                          iterationId,
+                          templateNodeId: templateStep.nodeId,
+                          level: "warn",
+                          message: `Check failed, retrying (${attempt}/${maxAttempts}): ${failMessage}`,
+                        });
+                        continue;
+                      }
+
+                      if (softFail) {
+                        // Soft failure - mark as warning but continue
+                        hasSoftFailures = true;
+                        onEvent({
+                          type: "map:templateStep:end",
+                          runId,
+                          mapNodeId,
+                          at: new Date().toISOString(),
+                          iterationId,
+                          templateNodeId: templateStep.nodeId,
+                          templateKind: "check",
+                          status: "warning",
+                          checkResult: "fail",
+                          checkMessage: failMessage,
+                          durationMs: Date.now() - templateStepStartTime,
+                        });
+                        stepSucceeded = true; // Continue to next step
+                        break;
+                      } else {
+                        // Hard failure
+                        onEvent({
+                          type: "map:templateStep:end",
+                          runId,
+                          mapNodeId,
+                          at: new Date().toISOString(),
+                          iterationId,
+                          templateNodeId: templateStep.nodeId,
+                          templateKind: "check",
+                          status: "failed",
+                          checkResult: "fail",
+                          checkMessage: failMessage,
+                          durationMs: Date.now() - templateStepStartTime,
+                          error: { message: failMessage },
+                        });
+
+                        iterationFailed = true;
+                        iterationError = { message: failMessage };
+                        break;
+                      }
+                    }
+                  } else if (templateStep.fn) {
+                    // Execute regular step
+                    await templateStep.fn(stepCtx);
+
+                    // Emit map:templateStep:end success
+                    onEvent({
+                      type: "map:templateStep:end",
+                      runId,
+                      mapNodeId,
+                      at: new Date().toISOString(),
+                      iterationId,
+                      templateNodeId: templateStep.nodeId,
+                      templateKind: "step",
+                      status: "success",
+                      durationMs: Date.now() - templateStepStartTime,
+                    });
+                    stepSucceeded = true;
+                    break;
+                  }
                 } catch (e: any) {
                   if (attempt < maxAttempts) {
                     onEvent({
@@ -911,12 +1310,14 @@ export async function executeWorkflow(
                       iterationId,
                       templateNodeId: templateStep.nodeId,
                       level: "warn",
-                      message: `Step failed, retrying (${attempt}/${maxAttempts}): ${e.message}`,
+                      message: `${
+                        isCheck ? "Check errored" : "Step failed"
+                      }, retrying (${attempt}/${maxAttempts}): ${e.message}`,
                     });
                     continue;
                   }
 
-                  // Emit map:templateStep:end failed
+                  // Emit map:templateStep:end failed/error
                   onEvent({
                     type: "map:templateStep:end",
                     runId,
@@ -924,7 +1325,9 @@ export async function executeWorkflow(
                     at: new Date().toISOString(),
                     iterationId,
                     templateNodeId: templateStep.nodeId,
+                    templateKind: templateStep.kind,
                     status: "failed",
+                    checkResult: isCheck ? "error" : undefined,
                     durationMs: Date.now() - templateStepStartTime,
                     error: { message: e.message, stack: e.stack },
                   });
@@ -937,7 +1340,9 @@ export async function executeWorkflow(
 
               if (!stepSucceeded) {
                 if (onError === "fail-fast") {
-                  mapError = new Error(iterationError?.message || "Step failed");
+                  mapError = new Error(
+                    iterationError?.message || "Step failed"
+                  );
                   break;
                 }
                 break;
@@ -964,8 +1369,8 @@ export async function executeWorkflow(
               status: iterationFailed
                 ? "failed"
                 : isCancelled
-                  ? "skipped"
-                  : "success",
+                ? "skipped"
+                : "success",
               durationMs: Date.now() - itemStartTime,
               error: iterationError,
             });

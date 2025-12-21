@@ -1,378 +1,566 @@
-import { useState } from 'react';
-import { X, Repeat, CheckCircle, XCircle, Clock, AlertCircle, Filter } from 'lucide-react';
-import { MapState, IterationSummary } from '../hooks/useEventStream';
+import { useState } from "react";
+import {
+  X,
+  Repeat,
+  CheckCircle,
+  XCircle,
+  Clock,
+  AlertCircle,
+  Filter,
+  ShieldCheck,
+  AlertTriangle,
+} from "lucide-react";
+import {
+  MapState,
+  IterationSummary,
+  CheckResult,
+} from "../hooks/useEventStream";
 
 type NodeData = {
-    id: string;
-    title: string;
-    kind: string;
-    meta?: {
-        description?: string;
-        tags?: string[];
-        ui?: { icon?: string };
-        aws?: { service?: string };
-        map?: {
-            onError?: 'fail-fast' | 'continue';
-            maxConcurrency?: number;
-        };
+  id: string;
+  title: string;
+  kind: string;
+  meta?: {
+    description?: string;
+    tags?: string[];
+    ui?: { icon?: string };
+    aws?: { service?: string };
+    map?: {
+      onError?: "fail-fast" | "continue";
+      maxConcurrency?: number;
     };
+    check?: {
+      message?: string;
+      softFail?: boolean;
+    };
+  };
 };
 
 type Props = {
-    node: NodeData | null;
-    mapState?: MapState;
-    outputs?: Record<string, any>;
-    mapOutputs?: Record<string, Record<string, Record<string, any>>>;
-    onClose: () => void;
+  node: NodeData | null;
+  mapState?: MapState;
+  outputs?: Record<string, any>;
+  mapOutputs?: Record<string, Record<string, Record<string, any>>>;
+  checkResult?: CheckResult;
+  nodeStatus?: string;
+  onClose: () => void;
 };
 
-type IterationFilter = 'all' | 'failed' | 'recent';
+type IterationFilter = "all" | "failed" | "recent";
 
-export function NodeDetailsPanel({ node, mapState, outputs, mapOutputs, onClose }: Props) {
-    const [filter, setFilter] = useState<IterationFilter>('all');
+export function NodeDetailsPanel({
+  node,
+  mapState,
+  outputs,
+  mapOutputs,
+  checkResult,
+  nodeStatus,
+  onClose,
+}: Props) {
+  const [filter, setFilter] = useState<IterationFilter>("all");
 
-    if (!node) return null;
+  if (!node) return null;
 
-    // Check if this is a map node
-    const isMapNode = node.kind === 'map';
+  // Check if this is a map node or check node
+  const isMapNode = node.kind === "map";
+  const isCheckNode = node.kind === "check";
 
-    const hasMeta = node.meta && (
-        node.meta.description ||
-        (node.meta.tags && node.meta.tags.length > 0) ||
-        node.meta.aws?.service
-    );
+  const hasMeta =
+    node.meta &&
+    (node.meta.description ||
+      (node.meta.tags && node.meta.tags.length > 0) ||
+      node.meta.aws?.service ||
+      node.meta.check);
 
-    // Get filtered iterations for map nodes
-    const getFilteredIterations = (): IterationSummary[] => {
-        if (!mapState) return [];
+  // Get filtered iterations for map nodes
+  const getFilteredIterations = (): IterationSummary[] => {
+    if (!mapState) return [];
 
-        switch (filter) {
-            case 'failed':
-                return mapState.iterations.failures;
-            case 'recent':
-                return mapState.iterations.recent;
-            case 'all':
-            default:
-                // Merge failures and recent, dedupe by iterationId
-                const seen = new Set<string>();
-                const merged: IterationSummary[] = [];
+    switch (filter) {
+      case "failed":
+        return mapState.iterations.failures;
+      case "recent":
+        return mapState.iterations.recent;
+      case "all":
+      default:
+        // Merge failures and recent, dedupe by iterationId
+        const seen = new Set<string>();
+        const merged: IterationSummary[] = [];
 
-                // Add failures first
-                for (const iter of mapState.iterations.failures) {
-                    if (!seen.has(iter.iterationId)) {
-                        seen.add(iter.iterationId);
-                        merged.push(iter);
-                    }
-                }
-
-                // Add recent that aren't already in failures
-                for (const iter of mapState.iterations.recent) {
-                    if (!seen.has(iter.iterationId)) {
-                        seen.add(iter.iterationId);
-                        merged.push(iter);
-                    }
-                }
-
-                // Sort by index
-                return merged.sort((a, b) => a.index - b.index);
+        // Add failures first
+        for (const iter of mapState.iterations.failures) {
+          if (!seen.has(iter.iterationId)) {
+            seen.add(iter.iterationId);
+            merged.push(iter);
+          }
         }
-    };
 
-    const filteredIterations = isMapNode ? getFilteredIterations() : [];
+        // Add recent that aren't already in failures
+        for (const iter of mapState.iterations.recent) {
+          if (!seen.has(iter.iterationId)) {
+            seen.add(iter.iterationId);
+            merged.push(iter);
+          }
+        }
 
-    // Get output for current node
-    const output = outputs?.[node.id];
+        // Sort by index
+        return merged.sort((a, b) => a.index - b.index);
+    }
+  };
 
-    // Format duration
-    const formatDuration = (ms: number): string => {
-        if (ms < 1000) return `${ms}ms`;
-        return `${(ms / 1000).toFixed(1)}s`;
-    };
+  const filteredIterations = isMapNode ? getFilteredIterations() : [];
 
-    return (
-        <div className="absolute top-0 right-0 w-80 h-full bg-gray-900 border-l border-gray-800 shadow-xl z-10 flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-                <div className="flex items-center gap-2">
-                    {isMapNode && <Repeat size={14} className="text-purple-400" />}
-                    <h3 className="text-sm font-semibold text-white">
-                        {isMapNode ? 'Map Details' : 'Step Details'}
-                    </h3>
-                </div>
-                <button
-                    onClick={onClose}
-                    className="text-gray-400 hover:text-white transition-colors"
-                >
-                    <X size={18} />
-                </button>
-            </div>
+  // Get output for current node
+  const output = outputs?.[node.id];
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {/* Title */}
-                <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Title</label>
-                    <p className="text-sm text-white mt-1">{node.title}</p>
-                </div>
+  // Format duration
+  const formatDuration = (ms: number): string => {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
 
-                {/* Node ID */}
-                <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Node ID</label>
-                    <p className="text-xs text-gray-400 mt-1 font-mono break-all">{node.id}</p>
-                </div>
-
-                {/* Kind */}
-                <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</label>
-                    <p className="text-sm text-white mt-1 capitalize">{node.kind}</p>
-                </div>
-
-                {/* Map-specific content */}
-                {isMapNode && (
-                    <>
-                        {/* Map configuration */}
-                        {node.meta?.map && (
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Configuration</label>
-                                <div className="mt-1 space-y-1 text-xs">
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-400">Error Policy:</span>
-                                        <span className="text-white">{node.meta.map.onError ?? 'fail-fast'}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-400">Concurrency:</span>
-                                        <span className="text-white">{node.meta.map.maxConcurrency ?? 1}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Counts summary */}
-                        {mapState?.counts && (
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Progress</label>
-                                <div className="mt-2 grid grid-cols-3 gap-2">
-                                    <div className="bg-gray-800 rounded p-2 text-center">
-                                        <div className="text-lg font-semibold text-white">{mapState.counts.total}</div>
-                                        <div className="text-xs text-gray-400">Total</div>
-                                    </div>
-                                    <div className="bg-green-900/30 border border-green-800 rounded p-2 text-center">
-                                        <div className="text-lg font-semibold text-green-400">{mapState.counts.completed}</div>
-                                        <div className="text-xs text-gray-400">Done</div>
-                                    </div>
-                                    <div className="bg-red-900/30 border border-red-800 rounded p-2 text-center">
-                                        <div className="text-lg font-semibold text-red-400">{mapState.counts.failed}</div>
-                                        <div className="text-xs text-gray-400">Failed</div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Iterations table */}
-                        <div>
-                            <div className="flex items-center justify-between mb-2">
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Iterations</label>
-                                {/* Filter buttons */}
-                                <div className="flex items-center gap-1">
-                                    <Filter size={12} className="text-gray-500" />
-                                    <button
-                                        onClick={() => setFilter('all')}
-                                        className={`px-2 py-0.5 text-xs rounded ${filter === 'all'
-                                            ? 'bg-gray-700 text-white'
-                                            : 'text-gray-400 hover:text-white'
-                                            }`}
-                                    >
-                                        All
-                                    </button>
-                                    <button
-                                        onClick={() => setFilter('failed')}
-                                        className={`px-2 py-0.5 text-xs rounded ${filter === 'failed'
-                                            ? 'bg-red-900/50 text-red-400'
-                                            : 'text-gray-400 hover:text-red-400'
-                                            }`}
-                                    >
-                                        Failed
-                                    </button>
-                                    <button
-                                        onClick={() => setFilter('recent')}
-                                        className={`px-2 py-0.5 text-xs rounded ${filter === 'recent'
-                                            ? 'bg-blue-900/50 text-blue-400'
-                                            : 'text-gray-400 hover:text-blue-400'
-                                            }`}
-                                    >
-                                        Recent
-                                    </button>
-                                </div>
-                            </div>
-
-                            {filteredIterations.length === 0 ? (
-                                <div className="text-center py-4 text-gray-500 text-xs">
-                                    {mapState ? 'No iterations recorded yet' : 'Awaiting execution'}
-                                </div>
-                            ) : (
-                                <div className="space-y-1 max-h-64 overflow-y-auto">
-                                    {filteredIterations.map((iter) => (
-                                        <IterationRow
-                                            key={iter.iterationId}
-                                            iteration={iter}
-                                            formatDuration={formatDuration}
-                                            outputs={mapOutputs?.[node.id]?.[iter.iterationId]}
-                                        />
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </>
-                )}
-
-                {/* Non-map node content */}
-                {!isMapNode && (
-                    <>
-                        {/* Output */}
-                        {output !== undefined && (
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Output</label>
-                                <div className="mt-1 bg-gray-950 border border-gray-800 rounded-md overflow-hidden">
-                                    <div className="p-2 overflow-auto max-h-60 text-xs font-mono text-blue-300">
-                                        <OutputValue value={output} />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Description */}
-                        {node.meta?.description && (
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</label>
-                                <p className="text-sm text-gray-300 mt-1">{node.meta.description}</p>
-                            </div>
-                        )}
-
-                        {/* Tags */}
-                        {node.meta?.tags && node.meta.tags.length > 0 && (
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tags</label>
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                    {node.meta.tags.map((tag, idx) => (
-                                        <span
-                                            key={idx}
-                                            className="px-2 py-1 bg-blue-900/30 border border-blue-800 rounded text-xs text-blue-300"
-                                        >
-                                            {tag}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* AWS Service */}
-                        {node.meta?.aws?.service && (
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">AWS Service</label>
-                                <p className="text-sm text-orange-400 mt-1 font-medium">{node.meta.aws.service}</p>
-                            </div>
-                        )}
-
-                        {/* Icon */}
-                        {node.meta?.ui?.icon && (
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Icon</label>
-                                <p className="text-sm text-gray-300 mt-1">{node.meta.ui.icon}</p>
-                            </div>
-                        )}
-
-                        {/* No metadata message */}
-                        {!hasMeta && (
-                            <div className="text-center py-8 text-gray-500 text-sm">
-                                No additional metadata available for this step.
-                            </div>
-                        )}
-                    </>
-                )}
-            </div>
+  return (
+    <div className="absolute top-0 right-0 w-80 h-full bg-gray-900 border-l border-gray-800 shadow-xl z-10 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+        <div className="flex items-center gap-2">
+          {isMapNode && <Repeat size={14} className="text-purple-400" />}
+          {isCheckNode && <ShieldCheck size={14} className="text-cyan-400" />}
+          <h3 className="text-sm font-semibold text-white">
+            {isMapNode
+              ? "Map Details"
+              : isCheckNode
+              ? "Check Details"
+              : "Step Details"}
+          </h3>
         </div>
-    );
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-white transition-colors"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Title */}
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Title
+          </label>
+          <p className="text-sm text-white mt-1">{node.title}</p>
+        </div>
+
+        {/* Node ID */}
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Node ID
+          </label>
+          <p className="text-xs text-gray-400 mt-1 font-mono break-all">
+            {node.id}
+          </p>
+        </div>
+
+        {/* Kind */}
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Type
+          </label>
+          <p className="text-sm text-white mt-1 capitalize">{node.kind}</p>
+        </div>
+
+        {/* Map-specific content */}
+        {isMapNode && (
+          <>
+            {/* Map configuration */}
+            {node.meta?.map && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Configuration
+                </label>
+                <div className="mt-1 space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Error Policy:</span>
+                    <span className="text-white">
+                      {node.meta.map.onError ?? "fail-fast"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Concurrency:</span>
+                    <span className="text-white">
+                      {node.meta.map.maxConcurrency ?? 1}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Counts summary */}
+            {mapState?.counts && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Progress
+                </label>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <div className="bg-gray-800 rounded p-2 text-center">
+                    <div className="text-lg font-semibold text-white">
+                      {mapState.counts.total}
+                    </div>
+                    <div className="text-xs text-gray-400">Total</div>
+                  </div>
+                  <div className="bg-green-900/30 border border-green-800 rounded p-2 text-center">
+                    <div className="text-lg font-semibold text-green-400">
+                      {mapState.counts.completed}
+                    </div>
+                    <div className="text-xs text-gray-400">Done</div>
+                  </div>
+                  <div className="bg-red-900/30 border border-red-800 rounded p-2 text-center">
+                    <div className="text-lg font-semibold text-red-400">
+                      {mapState.counts.failed}
+                    </div>
+                    <div className="text-xs text-gray-400">Failed</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Iterations table */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Iterations
+                </label>
+                {/* Filter buttons */}
+                <div className="flex items-center gap-1">
+                  <Filter size={12} className="text-gray-500" />
+                  <button
+                    onClick={() => setFilter("all")}
+                    className={`px-2 py-0.5 text-xs rounded ${
+                      filter === "all"
+                        ? "bg-gray-700 text-white"
+                        : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setFilter("failed")}
+                    className={`px-2 py-0.5 text-xs rounded ${
+                      filter === "failed"
+                        ? "bg-red-900/50 text-red-400"
+                        : "text-gray-400 hover:text-red-400"
+                    }`}
+                  >
+                    Failed
+                  </button>
+                  <button
+                    onClick={() => setFilter("recent")}
+                    className={`px-2 py-0.5 text-xs rounded ${
+                      filter === "recent"
+                        ? "bg-blue-900/50 text-blue-400"
+                        : "text-gray-400 hover:text-blue-400"
+                    }`}
+                  >
+                    Recent
+                  </button>
+                </div>
+              </div>
+
+              {filteredIterations.length === 0 ? (
+                <div className="text-center py-4 text-gray-500 text-xs">
+                  {mapState
+                    ? "No iterations recorded yet"
+                    : "Awaiting execution"}
+                </div>
+              ) : (
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {filteredIterations.map((iter) => (
+                    <IterationRow
+                      key={iter.iterationId}
+                      iteration={iter}
+                      formatDuration={formatDuration}
+                      outputs={mapOutputs?.[node.id]?.[iter.iterationId]}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Check-specific content */}
+        {isCheckNode && (
+          <>
+            {/* Check result */}
+            {checkResult && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Result
+                </label>
+                <div className="mt-2">
+                  <div
+                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
+                      checkResult.result === "pass"
+                        ? "bg-green-900/30 text-green-400 border border-green-800"
+                        : checkResult.result === "fail"
+                        ? "bg-red-900/30 text-red-400 border border-red-800"
+                        : "bg-orange-900/30 text-orange-400 border border-orange-800"
+                    }`}
+                  >
+                    {checkResult.result === "pass" && <CheckCircle size={14} />}
+                    {checkResult.result === "fail" && <XCircle size={14} />}
+                    {checkResult.result === "error" && (
+                      <AlertCircle size={14} />
+                    )}
+                    <span className="capitalize">{checkResult.result}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Soft fail indicator */}
+            {node.meta?.check?.softFail && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Behavior
+                </label>
+                <div className="mt-1 flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-yellow-400" />
+                  <span className="text-sm text-yellow-400">
+                    Soft Fail Enabled
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Failure will produce a warning but workflow continues
+                </p>
+              </div>
+            )}
+
+            {/* Check message (from meta or result) */}
+            {(checkResult?.message || node.meta?.check?.message) && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  {checkResult?.result === "fail" ||
+                  checkResult?.result === "error"
+                    ? "Failure Message"
+                    : "Message"}
+                </label>
+                <div
+                  className={`mt-1 p-2 rounded border ${
+                    checkResult?.result === "fail" ||
+                    checkResult?.result === "error"
+                      ? "bg-red-950/50 border-red-800/50 text-red-300"
+                      : "bg-gray-800 border-gray-700 text-gray-300"
+                  }`}
+                >
+                  <p className="text-sm">
+                    {checkResult?.message || node.meta?.check?.message}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Status indicator for pending/running checks */}
+            {!checkResult && nodeStatus && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Status
+                </label>
+                <div className="mt-1">
+                  <span
+                    className={`text-sm capitalize ${
+                      nodeStatus === "running"
+                        ? "text-blue-400"
+                        : nodeStatus === "warning"
+                        ? "text-yellow-400"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    {nodeStatus}
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Non-map, non-check node content */}
+        {!isMapNode && !isCheckNode && (
+          <>
+            {/* Output */}
+            {output !== undefined && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Output
+                </label>
+                <div className="mt-1 bg-gray-950 border border-gray-800 rounded-md overflow-hidden">
+                  <div className="p-2 overflow-auto max-h-60 text-xs font-mono text-blue-300">
+                    <OutputValue value={output} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Description */}
+            {node.meta?.description && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Description
+                </label>
+                <p className="text-sm text-gray-300 mt-1">
+                  {node.meta.description}
+                </p>
+              </div>
+            )}
+
+            {/* Tags */}
+            {node.meta?.tags && node.meta.tags.length > 0 && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Tags
+                </label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {node.meta.tags.map((tag, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-1 bg-blue-900/30 border border-blue-800 rounded text-xs text-blue-300"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* AWS Service */}
+            {node.meta?.aws?.service && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  AWS Service
+                </label>
+                <p className="text-sm text-orange-400 mt-1 font-medium">
+                  {node.meta.aws.service}
+                </p>
+              </div>
+            )}
+
+            {/* Icon */}
+            {node.meta?.ui?.icon && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Icon
+                </label>
+                <p className="text-sm text-gray-300 mt-1">
+                  {node.meta.ui.icon}
+                </p>
+              </div>
+            )}
+
+            {/* No metadata message */}
+            {!hasMeta && (
+              <div className="text-center py-8 text-gray-500 text-sm">
+                No additional metadata available for this step.
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Output value renderer with truncation
 function OutputValue({ value }: { value: any }) {
-    const json = JSON.stringify(value, null, 2);
-    const maxLength = 2000;
-    const isTruncated = json.length > maxLength;
+  const json = JSON.stringify(value, null, 2);
+  const maxLength = 2000;
+  const isTruncated = json.length > maxLength;
 
-    return (
-        <div className="whitespace-pre-wrap">
-            {isTruncated ? `${json.substring(0, maxLength)}... (truncated)` : json}
-        </div>
-    );
+  return (
+    <div className="whitespace-pre-wrap">
+      {isTruncated ? `${json.substring(0, maxLength)}... (truncated)` : json}
+    </div>
+  );
 }
 
 // Iteration row component
 function IterationRow({
-    iteration,
-    formatDuration,
-    outputs
+  iteration,
+  formatDuration,
+  outputs,
 }: {
-    iteration: IterationSummary;
-    formatDuration: (ms: number) => string;
-    outputs?: Record<string, any>;
+  iteration: IterationSummary;
+  formatDuration: (ms: number) => string;
+  outputs?: Record<string, any>;
 }) {
-    const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
-    const statusIcon = {
-        success: <CheckCircle size={12} className="text-green-400" />,
-        failed: <XCircle size={12} className="text-red-400" />,
-        skipped: <Clock size={12} className="text-gray-400" />,
-    };
+  const statusIcon: Record<string, JSX.Element> = {
+    success: <CheckCircle size={12} className="text-green-400" />,
+    failed: <XCircle size={12} className="text-red-400" />,
+    skipped: <Clock size={12} className="text-gray-400" />,
+    warning: <AlertTriangle size={12} className="text-yellow-400" />,
+  };
 
-    const statusBg = {
-        success: 'bg-gray-800/50',
-        failed: 'bg-red-900/20 border border-red-800/50',
-        skipped: 'bg-gray-800/30',
-    };
+  const statusBg: Record<string, string> = {
+    success: "bg-gray-800/50",
+    failed: "bg-red-900/20 border border-red-800/50",
+    skipped: "bg-gray-800/30",
+    warning: "bg-yellow-900/20 border border-yellow-800/50",
+  };
 
-    return (
-        <div className={`rounded p-2 ${statusBg[iteration.status]}`}>
-            <div
-                className="flex items-center gap-2 cursor-pointer"
-                onClick={() => setExpanded(!expanded)}
-            >
-                {statusIcon[iteration.status]}
-                <span className="text-xs text-white font-mono">
-                    {iteration.key ?? `#${iteration.index}`}
-                </span>
-                <span className="text-xs text-gray-500 ml-auto">
-                    {formatDuration(iteration.durationMs)}
-                </span>
+  return (
+    <div
+      className={`rounded p-2 ${
+        statusBg[iteration.status] || "bg-gray-800/50"
+      }`}
+    >
+      <div
+        className="flex items-center gap-2 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {statusIcon[iteration.status] || statusIcon.skipped}
+        <span className="text-xs text-white font-mono">
+          {iteration.key ?? `#${iteration.index}`}
+        </span>
+        <span className="text-xs text-gray-500 ml-auto">
+          {formatDuration(iteration.durationMs)}
+        </span>
+      </div>
+
+      {/* Expanded error info */}
+      {expanded && iteration.error && (
+        <div className="mt-2 p-2 bg-red-950/50 rounded border border-red-800/50">
+          <div className="flex items-start gap-2">
+            <AlertCircle
+              size={12}
+              className="text-red-400 mt-0.5 flex-shrink-0"
+            />
+            <div className="text-xs text-red-300 break-all">
+              {iteration.error.message}
             </div>
-
-            {/* Expanded error info */}
-            {expanded && iteration.error && (
-                <div className="mt-2 p-2 bg-red-950/50 rounded border border-red-800/50">
-                    <div className="flex items-start gap-2">
-                        <AlertCircle size={12} className="text-red-400 mt-0.5 flex-shrink-0" />
-                        <div className="text-xs text-red-300 break-all">
-                            {iteration.error.message}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Iteration Outputs (Always show if available when expanded, or show if expanded and failed) */}
-            {expanded && outputs && Object.keys(outputs).length > 0 && (
-                <div className="mt-2 space-y-2">
-                    {Object.entries(outputs).map(([templateNodeId, val]) => (
-                        <div key={templateNodeId} className="bg-gray-900/50 rounded border border-gray-700/50 p-2">
-                            <div className="text-[10px] text-gray-500 uppercase font-semibold mb-1">
-                                Output
-                            </div>
-                            <div className="text-xs font-mono text-blue-300 overflow-x-auto">
-                                <OutputValue value={val} />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+          </div>
         </div>
-    );
+      )}
+
+      {/* Iteration Outputs (Always show if available when expanded, or show if expanded and failed) */}
+      {expanded && outputs && Object.keys(outputs).length > 0 && (
+        <div className="mt-2 space-y-2">
+          {Object.entries(outputs).map(([templateNodeId, val]) => (
+            <div
+              key={templateNodeId}
+              className="bg-gray-900/50 rounded border border-gray-700/50 p-2"
+            >
+              <div className="text-[10px] text-gray-500 uppercase font-semibold mb-1">
+                Output
+              </div>
+              <div className="text-xs font-mono text-blue-300 overflow-x-auto">
+                <OutputValue value={val} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

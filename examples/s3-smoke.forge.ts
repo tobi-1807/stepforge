@@ -14,9 +14,10 @@ export default workflow("S3 Smoke Test", (wf) => {
     });
   });
 
-  wf.step("Verify Download", async (ctx) => {
+  wf.check("Verify Download", async (ctx) => {
     ctx.log.info("Verifying consistency...");
     await ctx.sleep(2000);
+    return false;
   });
 
   wf.step("Cleanup", async (ctx) => {

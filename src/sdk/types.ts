@@ -20,17 +20,15 @@ type InputTypeMap = {
 };
 
 /** Extract InputParameters that are required (required: true OR has default) */
-type RequiredInputParam<T extends InputParameter> =
-  T extends { required: true }
+type RequiredInputParam<T extends InputParameter> = T extends { required: true }
   ? T
   : T extends { default: infer _D }
   ? T
   : never;
 
 /** Extract InputParameters that are optional */
-type OptionalInputParam<T extends InputParameter> = T extends RequiredInputParam<T>
-  ? never
-  : T;
+type OptionalInputParam<T extends InputParameter> =
+  T extends RequiredInputParam<T> ? never : T;
 
 /** Get the TypeScript type for a specific input name from the definitions */
 type InputTypeFor<
@@ -47,14 +45,38 @@ type InputTypeFor<
  */
 export type InferInputs<TDefs extends readonly InputParameter[]> =
   // Required properties (required: true OR has default)
-  { [K in RequiredInputParam<TDefs[number]>["name"]]: InputTypeFor<TDefs, K> } &
-  // Optional properties
+  {
+    [K in RequiredInputParam<TDefs[number]>["name"]]: InputTypeFor<TDefs, K>;
+  } & // Optional properties
   { [K in OptionalInputParam<TDefs[number]>["name"]]?: InputTypeFor<TDefs, K> };
 
 /** Default inputs type when no inputs are defined or inference fails */
 export type AnyInputs = Record<string, any>;
 
-export type StepFn<TInputs = AnyInputs> = (ctx: StepContext<TInputs>) => Promise<void>;
+export type StepFn<TInputs = AnyInputs> = (
+  ctx: StepContext<TInputs>
+) => Promise<void>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Check types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Function signature for check predicates (sync or async, returns boolean) */
+export type CheckFn<TInputs = AnyInputs> = (
+  ctx: StepContext<TInputs>
+) => Promise<boolean> | boolean;
+
+/** Options for check nodes */
+export type CheckNodeOptions = {
+  /** Message shown in UI when check fails */
+  message?: string;
+  /** If true, failure marks workflow as warning but continues execution */
+  softFail?: boolean;
+  /** Retry configuration (same as step retries) */
+  retry?: RetryOptions;
+  /** Optional hard timeout in milliseconds */
+  timeoutMs?: number;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Loop / Map types
@@ -92,7 +114,17 @@ export type LoopContext<TItem = unknown> = {
 
 /** Builder passed to the map's build function for defining template steps */
 export type LoopBuilder<TInputs = AnyInputs, TItem = unknown> = {
-  step(title: string, fn: IterationStepFn<TInputs, TItem>, options?: StepNodeOptions): void;
+  step(
+    title: string,
+    fn: IterationStepFn<TInputs, TItem>,
+    options?: StepNodeOptions
+  ): void;
+  /** Define a check/assertion that verifies a condition for each iteration */
+  check(
+    title: string,
+    fn: IterationCheckFn<TInputs, TItem>,
+    options?: CheckNodeOptions
+  ): void;
   // group() can be added later if needed
 };
 
@@ -150,7 +182,10 @@ export type StepContext<TInputs = AnyInputs> = {
 };
 
 /** Context provided to steps defined inside a map template. Guaranteed LoopContext and RunStore. */
-export type IterationStepContext<TInputs = AnyInputs, TItem = unknown> = StepContext<TInputs> & {
+export type IterationStepContext<
+  TInputs = AnyInputs,
+  TItem = unknown
+> = StepContext<TInputs> & {
   loop: LoopContext<TItem>;
   iteration: RunStore;
 };
@@ -160,8 +195,25 @@ export type IterationStepFn<TInputs = AnyInputs, TItem = unknown> = (
   ctx: IterationStepContext<TInputs, TItem>
 ) => Promise<void>;
 
+/** Function signature for checks defined inside a map template. */
+export type IterationCheckFn<TInputs = AnyInputs, TItem = unknown> = (
+  ctx: IterationStepContext<TInputs, TItem>
+) => Promise<boolean> | boolean;
+
 export type WorkflowBuilder<TInputs = AnyInputs> = {
   step(title: string, fn: StepFn<TInputs>, options?: StepNodeOptions): void;
+  /**
+   * Define a check/assertion that verifies a condition.
+   *
+   * - Returns `true` → check passes
+   * - Returns `false` → check fails (with optional message)
+   * - Throws → check errors (different semantics from failure)
+   *
+   * @param title - Static title for the check node
+   * @param fn - Predicate function (sync or async) that returns boolean
+   * @param options - Optional check configuration (message, softFail, retry, timeout)
+   */
+  check(title: string, fn: CheckFn<TInputs>, options?: CheckNodeOptions): void;
   group(
     title: string,
     build: (b: WorkflowBuilder<TInputs>) => void,
@@ -170,11 +222,11 @@ export type WorkflowBuilder<TInputs = AnyInputs> = {
   /**
    * Define a map/loop construct that iterates over items at runtime.
    * Template steps are defined once and executed for each item sequentially.
-   * 
+   *
    * @param title - Static title for the map node (do not interpolate item values)
    * @param opts - Map options including items() function and optional key()
    * @param build - Function that defines template steps.
-   *                IMPORTANT: Use `ctx.loop.item` and `ctx.loop.index` inside 
+   *                IMPORTANT: Use `ctx.loop.item` and `ctx.loop.index` inside
    *                the `loop.step()` callbacks for runtime values.
    */
   map<T>(
@@ -212,7 +264,7 @@ export type WorkflowDefinition<
 
 export type GraphNode = {
   id: string;
-  kind: "root" | "group" | "step" | "map";
+  kind: "root" | "group" | "step" | "map" | "check";
   title: string;
   parentId?: string | null;
   deps?: string[];
@@ -225,6 +277,11 @@ export type GraphNode = {
     map?: {
       onError?: "fail-fast" | "continue";
       maxConcurrency?: number;
+    };
+    // Check-specific metadata
+    check?: {
+      message?: string;
+      softFail?: boolean;
     };
   };
 };

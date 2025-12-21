@@ -23,7 +23,9 @@ const elkOptions = {
 
 // Container-specific layout options
 const containerOptions = {
-  "elk.padding": `[top=${MAP_HEADER_HEIGHT + PADDING},left=${(CONTAINER_WIDTH - NODE_WIDTH) / 2},bottom=${PADDING},right=${(CONTAINER_WIDTH - NODE_WIDTH) / 2}]`,
+  "elk.padding": `[top=${MAP_HEADER_HEIGHT + PADDING},left=${
+    (CONTAINER_WIDTH - NODE_WIDTH) / 2
+  },bottom=${PADDING},right=${(CONTAINER_WIDTH - NODE_WIDTH) / 2}]`,
   "elk.algorithm": "layered",
   "elk.direction": "DOWN",
   "elk.layered.spacing.nodeNodeBetweenLayers": "40",
@@ -31,7 +33,9 @@ const containerOptions = {
 
 // Group-specific layout options (no header)
 const groupContainerOptions = {
-  "elk.padding": `[top=${PADDING},left=${(CONTAINER_WIDTH - NODE_WIDTH) / 2},bottom=${PADDING},right=${(CONTAINER_WIDTH - NODE_WIDTH) / 2}]`,
+  "elk.padding": `[top=${PADDING},left=${
+    (CONTAINER_WIDTH - NODE_WIDTH) / 2
+  },bottom=${PADDING},right=${(CONTAINER_WIDTH - NODE_WIDTH) / 2}]`,
   "elk.algorithm": "layered",
   "elk.direction": "DOWN",
   "elk.layered.spacing.nodeNodeBetweenLayers": "40",
@@ -53,7 +57,7 @@ type LayoutResult = {
  */
 function convertToElkGraph(graph: GraphInput): ElkNode {
   const nodeMap = graph.nodes;
-  
+
   // Helper to get children of a node
   const getChildren = (parentId: string): any[] => {
     return Object.values(nodeMap).filter((n: any) => n.parentId === parentId);
@@ -68,7 +72,8 @@ function convertToElkGraph(graph: GraphInput): ElkNode {
       // Container node with children
       return {
         id: node.id,
-        layoutOptions: node.kind === "map" ? containerOptions : groupContainerOptions,
+        layoutOptions:
+          node.kind === "map" ? containerOptions : groupContainerOptions,
         children: children.map((child) => buildElkNode(child)),
       };
     } else {
@@ -110,7 +115,7 @@ function extractNodes(
   parentY: number = 0
 ): any[] {
   const result: any[] = [];
-  
+
   if (!elkNode.children) return result;
 
   for (const child of elkNode.children) {
@@ -119,7 +124,7 @@ function extractNodes(
 
     const isContainer = graphNode.kind === "group" || graphNode.kind === "map";
     const hasChildren = child.children && child.children.length > 0;
-    
+
     // Position is relative to parent for nested nodes
     const position = {
       x: child.x ?? 0,
@@ -163,7 +168,7 @@ function extractNodes(
       );
       result.push(...childNodes);
     } else {
-      // Regular step node
+      // Regular step or check node
       const stepNode: any = {
         id: graphNode.id,
         type: "statusNode",
@@ -171,10 +176,12 @@ function extractNodes(
         data: {
           label: graphNode.title,
           status: "pending",
-          ...(parentId && graphNodes[parentId]?.kind === "map" && {
-            isMapTemplateStep: true,
-            mapNodeId: parentId,
-          }),
+          kind: graphNode.kind, // Pass node kind for check styling
+          ...(parentId &&
+            graphNodes[parentId]?.kind === "map" && {
+              isMapTemplateStep: true,
+              mapNodeId: parentId,
+            }),
         },
         ...(parentId && { parentId, extent: "parent" as const }),
       };
@@ -219,4 +226,3 @@ export async function layoutGraph(graph: GraphInput): Promise<LayoutResult> {
     return { nodes: [], edges: [] };
   }
 }
-
