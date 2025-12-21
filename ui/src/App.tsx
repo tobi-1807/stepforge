@@ -149,7 +149,7 @@ export default function App() {
           {selectedId && (
             <button
               onClick={handleRunClick}
-              className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded flex items-center gap-2 text-sm font-medium transition-colors"
+              className="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded flex items-center gap-2 text-sm font-medium transition-colors cursor-pointer"
             >
               <Play size={16} fill="currentColor" />
               Run

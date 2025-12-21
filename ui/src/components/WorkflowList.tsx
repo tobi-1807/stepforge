@@ -64,7 +64,7 @@ export function WorkflowList({
               <button
                 onClick={handleCreateExample}
                 disabled={creating}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white text-sm font-medium rounded transition-colors"
+                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white text-sm font-medium rounded transition-colors cursor-pointer"
               >
                 {creating ? (
                   <>
@@ -87,7 +87,10 @@ export function WorkflowList({
               onClick={() => onSelect(w.id)}
               className={clsx(
                 "w-full text-left px-3 py-2 rounded text-sm hover:bg-gray-800 transition-colors",
-                selectedId === w.id ? "bg-gray-800 text-white" : "text-gray-400"
+                selectedId === w.id
+                  ? "bg-gray-800 text-white"
+                  : "text-gray-400",
+                "cursor-pointer"
               )}
             >
               <div className="font-medium">{w.name}</div>
