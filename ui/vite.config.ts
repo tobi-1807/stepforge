@@ -14,9 +14,6 @@ export default defineConfig({
   build: {
     outDir: "../dist/ui",
     emptyOutDir: false,
-    // Increase chunk size warning limit since ELK.js is inherently large
-    // but already lazy-loaded via GraphViewer, so it doesn't affect initial bundle
-    chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -30,10 +27,6 @@ export default defineConfig({
           // Split React Flow (large graph library) into its own chunk
           if (id.includes("node_modules/@xyflow")) {
             return "react-flow";
-          }
-          // Split ELK.js (graph layout engine) into its own chunk
-          if (id.includes("node_modules/elkjs")) {
-            return "elk";
           }
         },
       },

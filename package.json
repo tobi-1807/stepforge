@@ -41,7 +41,6 @@
     "@xyflow/react": "^12.0.0-next.16",
     "autoprefixer": "^10.4.16",
     "clsx": "^2.1.0",
-    "elkjs": "^0.9.3",
     "lucide-react": "^0.300.0",
     "mprocs": "^0.8.0",
     "postcss": "^8.4.32",

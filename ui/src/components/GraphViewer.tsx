@@ -15,7 +15,7 @@ import { CheckNode } from "./CheckNode";
 import { MapContainerNode } from "./MapContainerNode";
 import { NodeStatus } from "./NodeStatusIndicator";
 import { MapState, CheckResult } from "../hooks/useEventStream";
-import { layoutGraph } from "../hooks/useElkLayout";
+import { layoutGraph } from "../utils/graphLayout";
 
 // Local type definitions to avoid linking SDK for MVP UI
 type GraphNode = {
@@ -55,20 +55,17 @@ export function GraphViewer({
     []
   );
 
-  // Apply ELK layout when graph changes
+  // Apply layout when graph changes
   useEffect(() => {
     if (!graph) return;
 
-    layoutGraph(graph).then(
-      ({ nodes: layoutedNodes, edges: layoutedEdges }) => {
-        setNodes(layoutedNodes);
-        setEdges(layoutedEdges);
-        // Zoom to fit the new graph after layout
-        window.requestAnimationFrame(() => {
-          fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
-        });
-      }
-    );
+    const { nodes: layoutedNodes, edges: layoutedEdges } = layoutGraph(graph);
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+    // Zoom to fit the new graph after layout
+    window.requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+    });
   }, [graph, setNodes, setEdges, fitView]);
 
   // Update node status based on state (existing logic + map enhancements)
