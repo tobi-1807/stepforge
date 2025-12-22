@@ -1,0 +1,7 @@
+{
+  "release-type": "node",
+  "packages": {
+    ".": {}
+  },
+  "pull-request-title-pattern": "chore(release): release ${version}"
+}
