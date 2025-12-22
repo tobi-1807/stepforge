@@ -14,7 +14,7 @@
     "README.md",
     "LICENSE"
   ],
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@10.26.1",
   "scripts": {
     "dev": "mprocs",
     "dev:daemon": "tsx src/daemon/server.ts",
@@ -66,5 +66,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/tobi-1807/stepforge"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
