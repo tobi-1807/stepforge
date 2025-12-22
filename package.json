@@ -62,10 +62,10 @@
     "ops",
     "runner"
   ],
-  "author": "Stepforge Team",
+  "author": "Tobi1807",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/stepforge/stepforge"
+    "url": "https://github.com/tobi-1807/stepforge"
   }
 }
